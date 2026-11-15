@@ -52,8 +52,12 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
+      # Live tests (tag `live`) call real InnerTube + GitHub Releases and
+      # are excluded from CI: they depend on YouTube network access and
+      # would be flaky in CI. Run them explicitly:
+      # flutter test --tags live
       - name: Test
-        run: flutter test
+        run: flutter test --exclude-tags live
 
       - name: Build debug APK (split per ABI)
         run: flutter build apk --debug --split-per-abi

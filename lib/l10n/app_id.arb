@@ -411,6 +411,36 @@
   "@sleepTimerCancelled": {
     "description": "Pesan saat sleep timer batal karena pengguna ganti lagu."
   },
+  "@spikeDemoBanner": {
+    "description": "Banner di layar demo spike sementara. Dihapus sebelum v1.0.0."
+  },
+  "@spikeDemoLogEmpty": {
+    "description": "Teks saat catatan percobaan demo spike masih kosong."
+  },
+  "@spikeDemoLogTitle": {
+    "description": "Judul bagian catatan percobaan di layar demo spike."
+  },
+  "@spikeDemoOpen": {
+    "description": "Tombol di Beranda untuk membuka layar demo spike sementara."
+  },
+  "@spikeDemoPlaying": {
+    "description": "Status lagu demo spike yang sedang diputar."
+  },
+  "@spikeDemoReadyIn": {
+    "description": "Waktu resolve lagu demo spike, memakai detik nyata.",
+    "placeholders": {
+      "seconds": {
+        "example": "1,5",
+        "type": "String"
+      }
+    }
+  },
+  "@spikeDemoResolving": {
+    "description": "Status lagu demo spike yang sedang disiapkan."
+  },
+  "@spikeDemoTitle": {
+    "description": "Judul layar demo spike sementara."
+  },
   "@sleepTimerDone": {
     "description": "Pesan saat sleep timer habis dan pemutaran berhenti."
   },
@@ -575,6 +605,14 @@
   "skippedUnplayable": "{count} lagu dilewati karena tidak bisa diputar.",
   "sleepTimer": "Timer tidur",
   "sleepTimerCancelled": "Timer dibatalkan karena kamu ganti lagu.",
+  "spikeDemoBanner": "Layar sementara untuk uji coba. Dihapus sebelum versi 1.0.0.",
+  "spikeDemoLogEmpty": "Belum ada percobaan. Ketuk salah satu lagu untuk mulai.",
+  "spikeDemoLogTitle": "Catatan percobaan",
+  "spikeDemoOpen": "Buka demo spike",
+  "spikeDemoPlaying": "Sedang diputar",
+  "spikeDemoReadyIn": "Siap dalam {seconds} detik",
+  "spikeDemoResolving": "Menyiapkan lagu...",
+  "spikeDemoTitle": "Demo spike",
   "sleepTimerDone": "Pemutaran berhenti sesuai timer tidur.",
   "songCannotPlay": "Lagu ini tidak bisa diputar sekarang. Coba lagu lain atau coba lagi nanti.",
   "songNeedsInternet": "Lagu ini butuh internet. Unduh dulu supaya bisa didengar offline.",
