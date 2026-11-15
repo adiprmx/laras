@@ -58,7 +58,7 @@ Build APK debug split per ABI:
 flutter build apk --debug --split-per-abi
 ```
 
-Target ukuran APK: maks 25 MB per ABI. CI gagal bila APK debug melewati batas itu.
+Target ukuran APK: maks 25 MB per ABI untuk APK rilis. CI memeriksa batas itu pada APK rilis; ukuran APK debug hanya dilaporkan (APK debug memang jauh lebih besar karena mesin debug dan simbol debug).
 
 ## Cara kontribusi
 
@@ -130,7 +130,7 @@ Build a debug APK, split per ABI:
 flutter build apk --debug --split-per-abi
 ```
 
-APK size target: 25 MB max per ABI. CI fails if a debug APK goes over that limit.
+APK size target: 25 MB max per ABI for the release APK. CI checks that limit on release APKs; debug APK sizes are reported only (debug APKs are inherently much larger — unstripped engine and debug symbols).
 
 ## Contribute
 

@@ -1,5 +1,11 @@
-# CI: analyze, test, and debug APK build on every push and pull request.
+# CI: analyze, test, and APK builds on every push and pull request.
 # Flutter is pinned to 3.47.8. Bumping it is a deliberate change, not automatic.
+#
+# Size rule (K4): the 25 MB per-ABI limit applies to the RELEASE APK, the
+# artifact users install. Debug APKs are far larger by design (unstripped
+# engine, JIT, debug symbols — run 43728749979 measured 90.3 MB arm64-v8a,
+# 68.7 MB armeabi-v7a, 76.4 MB x86_64 for the skeleton), so their sizes are
+# reported only and never gate the build.
 name: CI
 
 on:
@@ -52,11 +58,28 @@ jobs:
       - name: Build debug APK (split per ABI)
         run: flutter build apk --debug --split-per-abi
 
-      - name: Check APK size (max 25 MB each)
+      # Debug APKs are larger by design (unstripped engine, JIT, debug
+      # symbols). Their sizes are reported for visibility and never fail
+      # the build — the 25 MB limit gates the release APK below.
+      - name: Report debug APK sizes
+        run: |
+          for apk in build/app/outputs/flutter-apk/*-debug.apk; do
+            echo "$apk: $(stat -c%s "$apk") bytes"
+          done
+
+      # Release build for size measurement only. No key.properties exists
+      # in CI, so Gradle falls back to debug signing (see
+      # android/app/build.gradle.kts) — these APKs are NOT for
+      # distribution. Proper release signing arrives in P10.
+      - name: Build release APK (split per ABI)
+        run: flutter build apk --release --split-per-abi
+
+      # K4: release APK, max 25 MB per ABI.
+      - name: Check release APK size (max 25 MB each)
         run: |
           MAX_BYTES=$((25 * 1024 * 1024))
           FAILED=0
-          for apk in build/app/outputs/flutter-apk/*.apk; do
+          for apk in build/app/outputs/flutter-apk/*-release.apk; do
             SIZE=$(stat -c%s "$apk")
             echo "$apk: $SIZE bytes"
             if [ "$SIZE" -gt "$MAX_BYTES" ]; then
@@ -65,13 +88,27 @@ jobs:
             fi
           done
           if [ "$FAILED" -ne 0 ]; then
-            echo "One or more APKs exceed 25 MB. Shrink the app before merging."
+            echo "One or more release APKs exceed 25 MB. Shrink the app before merging."
             exit 1
           fi
+
+      # Largest entries inside the arm64 release APK, so a size regression
+      # points at its cause (native lib, DEX, assets) in the log itself.
+      - name: APK contents breakdown (release arm64)
+        run: |
+          unzip -l build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+            | sort -k1 -n -r | head -25
 
       - name: Upload debug APKs
         uses: actions/upload-artifact@v7.0.2
         with:
           name: laras-debug-apks
-          path: build/app/outputs/flutter-apk/*.apk
+          path: build/app/outputs/flutter-apk/*-debug.apk
+          retention-days: 14
+
+      - name: Upload release APKs (debug-signed, measurement only)
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: laras-release-apks-debug-signed
+          path: build/app/outputs/flutter-apk/*-release.apk
           retention-days: 14

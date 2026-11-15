@@ -18,7 +18,16 @@ no search, no downloads yet. Those arrive in later 0.9.x builds.
   navigation with four tabs (Beranda, Cari, Library, Unduhan), honest empty
   states, and a mini-player slot that stays hidden until a song plays.
 - Indonesian UI strings in `lib/l10n/app_id.arb`, ready for localization.
-- CI workflow: analyze, test, debug APK build split per ABI, 25 MB size check.
+- CI workflow: analyze, test, debug + release APK builds split per ABI,
+  25 MB size check on the release APK.
 - Release workflow: signed release APKs and AAB from tags, SHA-256 checksums.
+
+### Fixed
+
+- CI size check no longer gates on debug APKs. Run 43728749979 failed only
+  on that step (debug APKs measured 90.3 MB arm64-v8a, 68.7 MB armeabi-v7a,
+  76.4 MB x86_64) — debug APKs are larger by design. The 25 MB limit now
+  applies to the release APK, the artifact users install (K4); debug APK
+  sizes are reported only.
 
 [Unreleased]: https://github.com/adiprmx/laras/compare/v0.9.0...HEAD
