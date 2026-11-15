@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:laras/core/theme/app_colors.dart';
 import 'package:laras/core/theme/app_theme.dart';
+import 'package:laras/core/widgets/album_cover.dart';
+import 'package:laras/data/database.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/player/audio_player_port.dart';
 import 'package:laras/player/player_state.dart';
@@ -138,7 +140,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 textAlign: TextAlign.center,
                               ),
                             ],
-                            const SizedBox(height: AppSpacing.md),
+                            const SizedBox(height: AppSpacing.xs),
+                            Center(child: _FavoriteHeart(track: track)),
+                            const SizedBox(height: AppSpacing.sm),
                             Row(
                               children: <Widget>[
                                 Text(
@@ -328,38 +332,61 @@ class _Cover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Uri? artUri = this.artUri;
     return AspectRatio(
       aspectRatio: 1,
-      child: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.all(Radius.circular(AppRadius.card)),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: artUri == null
-            ? const Center(
-                child: Icon(
-                  Icons.music_note_outlined,
-                  size: 96,
-                  color: AppColors.textMuted,
-                ),
-              )
-            : Image.network(
-                artUri.toString(),
-                fit: BoxFit.cover,
-                errorBuilder:
-                    (BuildContext context, Object error, StackTrace? stack) {
-                      return const Center(
-                        child: Icon(
-                          Icons.music_note_outlined,
-                          size: 96,
-                          color: AppColors.textMuted,
-                        ),
-                      );
-                    },
-              ),
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          return AlbumCover(
+            artUri: artUri,
+            size: constraints.maxWidth,
+            radius: AppRadius.card,
+            iconSize: 96,
+            memCacheWidth: 720,
+          );
+        },
       ),
+    );
+  }
+}
+
+/// Tombol hati di bawah judul: menandai lagu yang sedang diputar
+/// sebagai favorit (dan otomatis masuk Library).
+///
+/// Sembunyi total bila tidak ada LibraryService di atasnya (tes tanpa
+/// database) — tidak ada tombol mati yang tampil.
+class _FavoriteHeart extends StatelessWidget {
+  const _FavoriteHeart({required this.track});
+
+  final Track track;
+
+  @override
+  Widget build(BuildContext context) {
+    final LibraryService? service = LibraryScope.maybeOf(context);
+    if (service == null) return const SizedBox.shrink();
+    final AppLocalizations strings = AppLocalizations.of(context)!;
+    return StreamBuilder<bool>(
+      stream: service.watchIsLiked(track.videoId),
+      initialData: false,
+      builder: (BuildContext context, AsyncSnapshot<bool> shot) {
+        final bool liked = shot.data ?? false;
+        return IconButton(
+          onPressed: () async {
+            // Pastikan lagu dikenal database dulu (lagu dari beranda
+            // belum tentu tersimpan), baru ubah status favoritnya.
+            await service.upsertSong(
+              track.toSongsCompanion(),
+              artistNames: track.artistNames,
+            );
+            await service.toggleLiked(track.videoId);
+          },
+          tooltip: liked ? strings.favoriteRemove : strings.favoriteAdd,
+          icon: Icon(
+            liked ? Icons.favorite : Icons.favorite_border,
+            color: liked ? AppColors.accent : AppColors.textMuted,
+          ),
+          iconSize: 28,
+        );
+      },
     );
   }
 }

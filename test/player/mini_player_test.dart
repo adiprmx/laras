@@ -1,3 +1,4 @@
+import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:laras/features/player/mini_player.dart';
@@ -95,6 +96,86 @@ void main() {
         tester.getSize(find.byKey(const Key('mini-player'))).height,
         64,
       );
+    });
+
+    testWidgets('sampul tampil bila artUri diberikan',
+        (WidgetTester tester) async {
+      await pumpLarasWidget(
+        tester,
+        MiniPlayer(
+          title: 'Lagu Uji',
+          artist: null,
+          isPlaying: false,
+          artUri: Uri.parse('https://i.ytimg.com/vi/abc123/hqdefault.jpg'),
+          onTap: () {},
+          onPlayPause: () {},
+          onNext: () {},
+          onPrevious: () {},
+        ),
+      );
+      final Finder cover = find.byType(CachedNetworkImage);
+      expect(cover, findsOneWidget);
+      expect(
+        tester.widget<CachedNetworkImage>(cover).imageUrl,
+        'https://i.ytimg.com/vi/abc123/hqdefault.jpg',
+      );
+    });
+
+    testWidgets('tombol hati memanggil onToggleFavorite',
+        (WidgetTester tester) async {
+      bool toggled = false;
+      await pumpLarasWidget(
+        tester,
+        MiniPlayer(
+          title: 'Lagu Uji',
+          artist: null,
+          isPlaying: false,
+          isFavorite: false,
+          onToggleFavorite: () => toggled = true,
+          onTap: () {},
+          onPlayPause: () {},
+          onNext: () {},
+          onPrevious: () {},
+        ),
+      );
+      expect(find.byIcon(Icons.favorite_border), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.favorite_border));
+      expect(toggled, isTrue);
+    });
+
+    testWidgets('hati terisi bila isFavorite benar; sembunyi tanpa callback',
+        (WidgetTester tester) async {
+      await pumpLarasWidget(
+        tester,
+        MiniPlayer(
+          title: 'Lagu Uji',
+          artist: null,
+          isPlaying: false,
+          isFavorite: true,
+          onToggleFavorite: () {},
+          onTap: () {},
+          onPlayPause: () {},
+          onNext: () {},
+          onPrevious: () {},
+        ),
+      );
+      expect(find.byIcon(Icons.favorite), findsOneWidget);
+
+      // Tanpa callback, tidak ada tombol hati sama sekali.
+      await pumpLarasWidget(
+        tester,
+        MiniPlayer(
+          title: 'Lagu Uji',
+          artist: null,
+          isPlaying: false,
+          onTap: () {},
+          onPlayPause: () {},
+          onNext: () {},
+          onPrevious: () {},
+        ),
+      );
+      expect(find.byIcon(Icons.favorite), findsNothing);
+      expect(find.byIcon(Icons.favorite_border), findsNothing);
     });
   });
 }

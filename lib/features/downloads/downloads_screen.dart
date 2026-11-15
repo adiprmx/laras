@@ -1,14 +1,15 @@
+/// Tab Unduhan. Antrean unduhan, progress, dan ringkasan penyimpanan
+/// datang di P5. Sementara itu layar ini berkata jujur, tanpa tombol
+/// yang pura-pura bisa dipakai.
+library;
+
 import 'package:flutter/material.dart';
 import 'package:laras/core/theme/app_theme.dart';
-import 'package:laras/core/widgets/empty_state.dart';
+import 'package:laras/core/widgets/coming_soon_screen.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 
-/// Tab Unduhan. Di P0 hanya menampilkan judul dan empty state. Antrean
-/// unduhan, progress, dan ringkasan penyimpanan datang di P5.
 class DownloadsScreen extends StatelessWidget {
-  const DownloadsScreen({super.key, required this.onSearchRequested});
-
-  final VoidCallback onSearchRequested;
+  const DownloadsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -31,12 +32,10 @@ class DownloadsScreen extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: EmptyState(
+            child: ComingSoonScreen(
               icon: Icons.download_outlined,
-              title: strings.downloadsEmptyTitle,
-              body: strings.downloadsEmptyBody,
-              actionLabel: strings.searchSongs,
-              onAction: onSearchRequested,
+              title: strings.comingSoon,
+              body: strings.downloadsComingSoonBody,
             ),
           ),
         ],

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:laras/data/database.dart';
 import 'package:laras/features/player/player_screen.dart';
 import 'package:laras/l10n/generated/app_localizations_id.dart';
 import 'package:laras/player/player.dart';
 
+import '../data/test_database.dart';
 import 'fakes.dart';
 import 'widget_helpers.dart';
 
@@ -171,6 +173,52 @@ void main() {
       port.emitSnapshot(PlayerSnapshot.idle);
       await pumpScreen(tester);
       expect(find.text(AppLocalizationsId().queueEmpty), findsOneWidget);
+    });
+
+    testWidgets('tanpa LibraryScope, tombol hati disembunyikan',
+        (WidgetTester tester) async {
+      await pumpScreen(tester);
+      expect(find.byIcon(Icons.favorite), findsNothing);
+      expect(find.byIcon(Icons.favorite_border), findsNothing);
+    });
+
+    testWidgets('tombol hati menandai favorit di database',
+        (WidgetTester tester) async {
+      final (LarasDatabase db, LibraryService library) =
+          createTestLibrary();
+      addTearDown(db.close);
+      tester.view.physicalSize = const Size(390, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      await pumpLarasWidget(
+        tester,
+        LibraryScope(service: library, child: PlayerScreen(port: port)),
+      );
+      await tester.pumpAndSettle();
+
+      final AppLocalizationsId strings = AppLocalizationsId();
+      expect(find.byTooltip(strings.favoriteAdd), findsOneWidget);
+      await tester.tap(find.byTooltip(strings.favoriteAdd));
+      await tester.pumpAndSettle();
+      expect(await library.isLiked('a'), isTrue);
+      expect(find.byIcon(Icons.favorite), findsOneWidget);
+
+      // Ketuk lagi melepas favorit.
+      await tester.tap(find.byTooltip(strings.favoriteRemove));
+      await tester.pumpAndSettle();
+      expect(await library.isLiked('a'), isFalse);
+      expect(find.byIcon(Icons.favorite_border), findsOneWidget);
+
+      // Lepas tree sebelum tes berakhir: drift menjadwalkan timer
+      // nol-detik saat stream watch dibatalkan; timer itu harus sempat
+      // jalan sebelum binding memeriksa tidak ada timer tertinggal.
+      // pump() polos TIDAK memajukan jam palsu (hanya flush microtask),
+      // jadi pakai pump(Duration.zero) yang memanggil elapse.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(Duration.zero);
     });
   });
 }

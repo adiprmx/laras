@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:laras/core/theme/app_theme.dart';
+import 'package:laras/features/home/home_screen.dart';
 import 'package:laras/features/player/mini_player.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/main.dart';
+import 'package:laras/player/player.dart';
 
 void main() {
   testWidgets('Laras renders four tabs with the dark theme', (
@@ -43,20 +45,29 @@ void main() {
     // Mini-player tidak tampil bila belum ada lagu.
     expect(find.byKey(const Key('mini-player')), findsNothing);
 
-    // Beranda menampilkan empty state pengguna baru.
-    expect(find.text(strings.homeEmptyTitle), findsOneWidget);
+    // Beranda: 5 lagu pilihan langsung terlihat, tanpa empty state
+    // dan tanpa tombol perantara (K-F2-08).
+    expect(find.text(strings.homeSongsTitle), findsOneWidget);
+    for (final Track track in homeTracks) {
+      expect(find.text(track.title), findsOneWidget);
+    }
+    expect(find.text(strings.homeEmptyTitle), findsNothing);
 
-    // Tombol 'Cari lagu' di Beranda pindah ke tab Cari.
-    await tester.tap(find.text(strings.searchSongs));
+    // Tab Cari menampilkan layar "Segera hadir", bukan kontrol mati.
+    await tester.tap(
+      find.descendant(of: tabBar, matching: find.text(strings.tabSearch)),
+    );
     await tester.pumpAndSettle();
-    expect(find.text(strings.searchComingSoon), findsOneWidget);
+    expect(find.text(strings.comingSoon), findsOneWidget);
+    expect(find.text(strings.searchComingSoonBody), findsOneWidget);
 
-    // Tab Unduhan menampilkan empty state-nya.
+    // Tab Unduhan menampilkan layar "Segera hadir".
     await tester.tap(
       find.descendant(of: tabBar, matching: find.text(strings.tabDownloads)),
     );
     await tester.pumpAndSettle();
-    expect(find.text(strings.downloadsEmptyTitle), findsOneWidget);
+    expect(find.text(strings.comingSoon), findsOneWidget);
+    expect(find.text(strings.downloadsComingSoonBody), findsOneWidget);
 
     // Tab Library menampilkan empty state dan ikon gerigi Pengaturan.
     await tester.tap(
@@ -112,6 +123,10 @@ void main() {
     expect(find.text('Artis Uji'), findsOneWidget);
     final Finder miniPlayer = find.byKey(const Key('mini-player'));
     expect(tester.getSize(miniPlayer).height, 64);
+
+    // Tanpa onToggleFavorite, tombol hati tidak tampil (tanpa tombol mati).
+    expect(find.byIcon(Icons.favorite_border), findsNothing);
+    expect(find.byIcon(Icons.favorite), findsNothing);
 
     await tester.tap(find.byIcon(Icons.play_arrow));
     expect(tappedPlay, isTrue);

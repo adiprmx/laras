@@ -1,5 +1,5 @@
 {
-  "@@last_modified": "2026-11-15T14:20:00.000",
+  "@@last_modified": "2026-11-16T04:10:00.000",
   "@@locale": "id",
   "@aboutLicenses": {
     "description": "Baris dan layar Tentang."
@@ -7,8 +7,29 @@
   "@addSongs": {
     "description": "Tombol tambah lagu ke playlist."
   },
+  "@addedToPlaylist": {
+    "description": "Pesan setelah lagu ditambahkan ke playlist.",
+    "placeholders": {
+      "name": {
+        "example": "Lagu santai",
+        "type": "String"
+      }
+    }
+  },
+  "@albums": {
+    "description": "Judul tab daftar album di Library."
+  },
+  "@albumsEmptyBody": {
+    "description": "Isi empty state tab Album."
+  },
+  "@albumsEmptyTitle": {
+    "description": "Judul empty state tab Album."
+  },
   "@alreadyDownloaded": {
     "description": "Label lagu yang sudah diunduh."
+  },
+  "@alreadyInPlaylist": {
+    "description": "Pesan saat lagu ditambahkan ke playlist yang sudah memuatnya."
   },
   "@appTitle": {
     "description": "Nama app, tampil di judul app dan layar Tentang."
@@ -18,6 +39,15 @@
   },
   "@appVolumeNote": {
     "description": "Keterangan slider volume pemutar."
+  },
+  "@artists": {
+    "description": "Judul tab daftar artis di Library."
+  },
+  "@artistsEmptyBody": {
+    "description": "Isi empty state tab Artis."
+  },
+  "@artistsEmptyTitle": {
+    "description": "Judul empty state tab Artis."
   },
   "@cancel": {
     "description": "Label kanonis tombol batal di seluruh app."
@@ -34,8 +64,20 @@
   "@checking": {
     "description": "Teks tombol Periksa pembaruan selama refresh berjalan."
   },
+  "@clearHistory": {
+    "description": "Tombol hapus semua riwayat putar."
+  },
+  "@clearHistoryBody": {
+    "description": "Isi dialog konfirmasi hapus riwayat."
+  },
+  "@clearHistoryTitle": {
+    "description": "Judul dialog konfirmasi hapus riwayat."
+  },
   "@clearPlayedSongsSpace": {
     "description": "Label tombol hapus cache streaming."
+  },
+  "@comingSoon": {
+    "description": "Judul layar fitur yang belum tersedia di build ini."
   },
   "@createPlaylist": {
     "description": "Tombol buat playlist baru."
@@ -48,6 +90,18 @@
   },
   "@deleteDownloadTitle": {
     "description": "Judul dialog hapus unduhan."
+  },
+  "@deletePlaylistBody": {
+    "description": "Isi dialog konfirmasi hapus playlist.",
+    "placeholders": {
+      "name": {
+        "example": "Lagu santai",
+        "type": "String"
+      }
+    }
+  },
+  "@deletePlaylistTitle": {
+    "description": "Judul dialog konfirmasi hapus playlist."
   },
   "@download": {
     "description": "Label tombol unduh."
@@ -86,6 +140,9 @@
   "@downloadWaiting": {
     "description": "Status unduhan yang tertunda karena offline."
   },
+  "@downloadsComingSoonBody": {
+    "description": "Isi layar Segera hadir di tab Unduhan."
+  },
   "@downloadsEmptyBody": {
     "description": "Isi empty state Unduhan."
   },
@@ -117,8 +174,20 @@
   "@exportBackup": {
     "description": "Baris ekspor backup."
   },
+  "@favoriteAdd": {
+    "description": "Label aksesibilitas tombol hati saat lagu belum favorit."
+  },
+  "@favoriteRemove": {
+    "description": "Label aksesibilitas tombol hati saat lagu sudah favorit."
+  },
   "@favorites": {
     "description": "Judul daftar lagu favorit."
+  },
+  "@favoritesEmptyBody": {
+    "description": "Isi empty state tab Favorit."
+  },
+  "@favoritesEmptyTitle": {
+    "description": "Judul empty state tab Favorit."
   },
   "@fileMissing": {
     "description": "Pesan saat file unduhan hilang atau rusak."
@@ -143,6 +212,12 @@
   },
   "@history": {
     "description": "Judul daftar riwayat putar."
+  },
+  "@historyEmptyBody": {
+    "description": "Isi empty state tab Riwayat."
+  },
+  "@historyEmptyTitle": {
+    "description": "Judul empty state tab Riwayat."
   },
   "@homeEmptyBody": {
     "description": "Isi empty state Beranda untuk pengguna baru tanpa data."
@@ -173,6 +248,9 @@
   },
   "@linkCannotOpen": {
     "description": "Pesan saat deep link dari luar app tidak valid."
+  },
+  "@loadMore": {
+    "description": "Tombol memuat halaman daftar berikutnya."
   },
   "@loadingMore": {
     "description": "Baris kecil di ujung daftar saat halaman berikut dimuat."
@@ -273,8 +351,35 @@
   "@playlistEmpty": {
     "description": "Pesan saat playlist kosong."
   },
+  "@playlistNameEmpty": {
+    "description": "Pesan validasi nama playlist kosong."
+  },
+  "@playlistNameHint": {
+    "description": "Contoh teks di kolom nama playlist."
+  },
+  "@playlistNameLabel": {
+    "description": "Label kolom nama playlist."
+  },
+  "@playlistNameTooLong": {
+    "description": "Pesan validasi nama playlist terlalu panjang."
+  },
+  "@playlistSongsCount": {
+    "description": "Jumlah lagu di playlist, memakai angka nyata.",
+    "placeholders": {
+      "count": {
+        "example": "12",
+        "type": "int"
+      }
+    }
+  },
   "@playlists": {
     "description": "Judul bagian playlist."
+  },
+  "@playlistsEmptyBody": {
+    "description": "Isi empty state tab Playlist."
+  },
+  "@playlistsEmptyTitle": {
+    "description": "Judul empty state tab Playlist."
   },
   "@preparingSong": {
     "description": "Teks status di Player, hanya tampil bila menyiapkan lagu melewati 2 detik."
@@ -318,6 +423,12 @@
   "@refreshFailed": {
     "description": "Pesan saat refresh Jelajah gagal, data lama tetap tampil."
   },
+  "@removeFromPlaylist": {
+    "description": "Label menu hapus lagu dari playlist."
+  },
+  "@renamePlaylist": {
+    "description": "Judul dialog ubah nama playlist."
+  },
   "@repeatAll": {
     "description": "Label aksesibilitas tombol ulangi saat mode ulangi semua aktif."
   },
@@ -333,8 +444,8 @@
   "@retryingSong": {
     "description": "Status di Player saat lagu dicoba diputar lagi setelah koneksi terputus di tengah lagu."
   },
-  "@searchComingSoon": {
-    "description": "Pesan jujur di tab Cari selama fitur pencarian belum dibangun (P0). Dihapus saat P4 selesai."
+  "@save": {
+    "description": "Label kanonis tombol simpan di seluruh app."
   },
   "@searchHint": {
     "description": "Teks di layar Cari sebelum ada kueri dan sebelum ada riwayat."
@@ -353,9 +464,6 @@
         "type": "String"
       }
     }
-  },
-  "@searchSongs": {
-    "description": "Tombol aksi di empty state, membuka tab Cari."
   },
   "@sectionDownloads": {
     "description": "Nama seksi Beranda: jalan pintas ke unduhan."
@@ -432,39 +540,6 @@
   "@sleepTimerCancelled": {
     "description": "Pesan saat sleep timer batal karena pengguna ganti lagu."
   },
-  "@spikeDemoBanner": {
-    "description": "Banner di layar demo spike sementara. Dihapus sebelum v1.0.0."
-  },
-  "@spikeDemoLogEmpty": {
-    "description": "Teks saat catatan percobaan demo spike masih kosong."
-  },
-  "@spikeDemoLogTitle": {
-    "description": "Judul bagian catatan percobaan di layar demo spike."
-  },
-  "@spikeDemoOpen": {
-    "description": "Tombol di Beranda untuk membuka layar demo spike sementara."
-  },
-  "@spikeDemoPlaying": {
-    "description": "Status lagu demo spike yang sedang diputar."
-  },
-  "@spikeDemoReadyIn": {
-    "description": "Waktu resolve lagu demo spike, memakai detik nyata.",
-    "placeholders": {
-      "seconds": {
-        "example": "1,5",
-        "type": "String"
-      }
-    }
-  },
-  "@spikeDemoResolving": {
-    "description": "Status lagu demo spike yang sedang disiapkan."
-  },
-  "@spikeDemoTitle": {
-    "description": "Judul layar demo spike sementara."
-  },
-  "@spikeDemoPaused": {
-    "description": "Status lagu demo spike yang dijeda."
-  },
   "@sleepTimerDone": {
     "description": "Pesan saat sleep timer habis dan pemutaran berhenti."
   },
@@ -477,8 +552,23 @@
   "@songNotSaved": {
     "description": "Pesan saat lagu yang belum tersimpan diketuk tanpa internet."
   },
+  "@songs": {
+    "description": "Judul tab daftar lagu di Library."
+  },
   "@songsCannotPlay": {
     "description": "Pesan setelah tiga lagu berturut-turut gagal diputar."
+  },
+  "@sortBy": {
+    "description": "Label menu sortir daftar."
+  },
+  "@sortByName": {
+    "description": "Pilihan sortir berdasarkan nama."
+  },
+  "@sortMostPlayed": {
+    "description": "Pilihan sortir berdasarkan paling sering diputar."
+  },
+  "@sortNewest": {
+    "description": "Pilihan sortir berdasarkan terbaru."
   },
   "@soundSettings": {
     "description": "Judul sheet Pengaturan suara di Player (kecepatan, nada, lewati hening)."
@@ -512,20 +602,34 @@
   },
   "aboutLicenses": "Tentang dan lisensi",
   "addSongs": "Tambah lagu",
+  "addedToPlaylist": "Ditambahkan ke {name}.",
+  "albums": "Album",
+  "albumsEmptyBody": "Album muncul di sini setelah lagunya masuk Library.",
+  "albumsEmptyTitle": "Belum ada album",
   "alreadyDownloaded": "Sudah diunduh",
+  "alreadyInPlaylist": "Lagu ini sudah ada di playlist.",
   "appTitle": "Laras",
   "appVolume": "Volume di app ini",
   "appVolumeNote": "Terpisah dari tombol volume HP.",
+  "artists": "Artis",
+  "artistsEmptyBody": "Artis muncul di sini setelah lagunya masuk Library.",
+  "artistsEmptyTitle": "Belum ada artis",
   "cancel": "Batal",
   "cannotCalculate": "Tidak bisa dihitung",
   "cannotPlayLabel": "Tidak bisa diputar",
   "checkForUpdates": "Periksa pembaruan",
   "checking": "Memeriksa...",
+  "clearHistory": "Hapus riwayat",
+  "clearHistoryBody": "Semua riwayat putar akan dihapus. Lagu di Library tidak ikut terhapus.",
+  "clearHistoryTitle": "Hapus semua riwayat?",
   "clearPlayedSongsSpace": "Kosongkan ruang lagu yang pernah diputar",
+  "comingSoon": "Segera hadir",
   "createPlaylist": "Buat playlist",
   "delete": "Hapus",
   "deleteAll": "Hapus semua",
   "deleteDownloadTitle": "Hapus unduhan?",
+  "deletePlaylistBody": "Playlist {name} akan dihapus. Lagunya tetap ada di Library.",
+  "deletePlaylistTitle": "Hapus playlist ini?",
   "download": "Unduh",
   "downloadAlbumTitle": "Unduh album ini",
   "downloadCount": "Unduh {count} lagu (sekitar {size})?",
@@ -535,6 +639,7 @@
   "downloadSongTitle": "Unduh lagu ini",
   "downloadStorageSettings": "Unduhan dan penyimpanan",
   "downloadWaiting": "Menunggu internet",
+  "downloadsComingSoonBody": "Fitur unduhan belum tersedia di versi ini. Nanti kamu bisa menyimpan lagu di HP dan memutarnya tanpa internet.",
   "downloadsEmptyBody": "Ketuk ikon unduh di lagu mana pun untuk menyimpan dan memutarnya tanpa internet.",
   "downloadsEmptyTitle": "Belum ada unduhan",
   "downloadsSummary": "{count} lagu, {size}",
@@ -542,13 +647,19 @@
   "exploreFailedParse": "Bagian jelajah belum bisa dimuat. YouTube mungkin mengubah layanannya.",
   "exploreNeedsInternet": "Bagian jelajah butuh internet. Sambungkan internet untuk melihatnya.",
   "exportBackup": "Ekspor cadangan",
+  "favoriteAdd": "Tandai favorit",
+  "favoriteRemove": "Hapus dari favorit",
   "favorites": "Lagu favorit",
+  "favoritesEmptyBody": "Ketuk ikon hati di lagu mana pun untuk menandainya.",
+  "favoritesEmptyTitle": "Belum ada lagu favorit",
   "fileMissing": "File lagu ini hilang atau rusak. Unduh ulang untuk memutar offline.",
   "filterAll": "Semua",
   "filterLibraryOnly": "Library saja",
   "freeSpace": "Sisa ruang: {size}",
   "fromYourLibrary": "Dari Library-mu",
   "history": "Riwayat",
+  "historyEmptyBody": "Lagu yang kamu putar akan muncul di sini.",
+  "historyEmptyTitle": "Belum ada riwayat",
   "homeEmptyBody": "Sambungkan internet sekali untuk mulai, atau buka Unduhan bila kamu sudah punya lagu tersimpan.",
   "homeEmptyTitle": "Belum ada yang bisa ditampilkan",
   "importBackup": "Impor cadangan",
@@ -557,6 +668,7 @@
   "libraryEmptyTitle": "Library-mu masih kosong",
   "libraryFailed": "Library tidak bisa dibuka. Coba tutup app dan buka lagi.",
   "linkCannotOpen": "Tautan ini tidak bisa dibuka di app",
+  "loadMore": "Muat lagi",
   "loadingMore": "Memuat lagu lainnya...",
   "loudnessBoost": "Buat suara lebih keras",
   "loudnessBoostNote": "Bukan penyeimbang volume antar lagu.",
@@ -590,7 +702,14 @@
   "playedSongsSpaceCleared": "Ruang lagu yang pernah diputar sudah dikosongkan. Unduhan tidak ikut terhapus.",
   "playlistDeleted": "Playlist sudah dihapus.",
   "playlistEmpty": "Playlist ini belum ada lagunya.",
+  "playlistNameEmpty": "Nama playlist tidak boleh kosong.",
+  "playlistNameHint": "Misalnya: Lagu santai",
+  "playlistNameLabel": "Nama playlist",
+  "playlistNameTooLong": "Nama playlist maksimal 100 karakter.",
+  "playlistSongsCount": "{count} lagu",
   "playlists": "Playlist",
+  "playlistsEmptyBody": "Buat playlist untuk mengumpulkan lagu-lagumu.",
+  "playlistsEmptyTitle": "Belum ada playlist",
   "preparingSong": "Menyiapkan lagu...",
   "previousSong": "Lagu sebelumnya",
   "qualityBalanced": "Seimbang",
@@ -605,17 +724,18 @@
   "recentSearches": "Terakhir dicari",
   "redownload": "Unduh ulang",
   "refreshFailed": "Gagal memperbarui. Menampilkan data terakhir.",
+  "removeFromPlaylist": "Hapus dari playlist",
+  "renamePlaylist": "Ubah nama playlist",
   "repeatAll": "Ulangi semua lagu",
   "repeatOff": "Pengulangan mati",
   "repeatOne": "Ulangi lagu ini",
   "retry": "Coba lagi",
   "retryingSong": "Koneksi terputus, mencoba memutar lagi...",
-  "searchComingSoon": "Pencarian belum tersedia di build ini. Pencarian datang di build berikutnya.",
+  "save": "Simpan",
   "searchHint": "Cari lagu, album, atau artis. Hasil dari library-mu muncul di sini juga.",
   "searchInLibraryOnly": "Cari di library saja",
   "searchNeedsInternet": "Butuh internet untuk mencari di luar library.",
   "searchNoResults": "Tidak ada hasil untuk '{query}'. Coba kata kunci lain atau periksa ejaannya.",
-  "searchSongs": "Cari lagu",
   "sectionDownloads": "Unduhan",
   "sectionExplore": "Jelajah",
   "sectionFailed": "Bagian ini tidak bisa dimuat. Periksa internet, lalu coba lagi.",
@@ -633,26 +753,22 @@
   "serviceNormal": "Normal",
   "serviceStatus": "Status layanan",
   "settings": "Pengaturan",
-  "settingsComingSoon": "Pengaturan belum tersedia di build ini. Pengaturan datang di build berikutnya.",
+  "settingsComingSoon": "Pengaturan belum tersedia di versi ini. Pengaturan datang di versi berikutnya.",
   "shuffle": "Acak",
   "skipSilence": "Lewati bagian hening",
   "skippedUnplayable": "{count} lagu dilewati karena tidak bisa diputar.",
   "sleepTimer": "Timer tidur",
   "sleepTimerCancelled": "Timer dibatalkan karena kamu ganti lagu.",
-  "spikeDemoBanner": "Layar sementara untuk uji coba. Dihapus sebelum versi 1.0.0.",
-  "spikeDemoLogEmpty": "Belum ada percobaan. Ketuk salah satu lagu untuk mulai.",
-  "spikeDemoLogTitle": "Catatan percobaan",
-  "spikeDemoOpen": "Buka demo spike",
-  "spikeDemoPlaying": "Sedang diputar",
-  "spikeDemoReadyIn": "Siap dalam {seconds} detik",
-  "spikeDemoResolving": "Menyiapkan lagu...",
-  "spikeDemoTitle": "Demo spike",
-  "spikeDemoPaused": "Dijeda",
   "sleepTimerDone": "Pemutaran berhenti sesuai timer tidur.",
   "songCannotPlay": "Lagu ini tidak bisa diputar sekarang. Coba lagu lain atau coba lagi nanti.",
   "songNeedsInternet": "Lagu ini butuh internet. Unduh dulu supaya bisa didengar offline.",
   "songNotSaved": "Lagu ini belum tersimpan di HP-mu. Sambungkan internet untuk memutarnya.",
+  "songs": "Lagu",
   "songsCannotPlay": "Lagu tidak bisa diputar sekarang. Periksa koneksi internet kamu, lalu coba lagi.",
+  "sortBy": "Urutkan",
+  "sortByName": "Nama",
+  "sortMostPlayed": "Sering diputar",
+  "sortNewest": "Terbaru",
   "soundSettings": "Pengaturan suara",
   "statusNeedsInternet": "Butuh internet untuk memeriksa status.",
   "storageFull": "Penyimpanan HP penuh. Hapus beberapa unduhan atau file lain, lalu coba lagi.",
@@ -662,5 +778,49 @@
   "tabLibrary": "Library",
   "tabSearch": "Cari",
   "understood": "Mengerti",
-  "viewDetails": "Lihat"
+  "viewDetails": "Lihat",
+  "searchComingSoonBody": "Pencarian belum tersedia di versi ini. Sementara itu, lagu di beranda sudah bisa langsung diputar.",
+  "@searchComingSoonBody": {
+    "description": "P3: K-F2-08/K-F2-09."
+  },
+  "homeSongsTitle": "Lagu Pilihan",
+  "@homeSongsTitle": {
+    "description": "P3: K-F2-08/K-F2-09."
+  },
+  "homeSongsHint": "Ketuk lagu untuk memutar",
+  "@homeSongsHint": {
+    "description": "P3: K-F2-08/K-F2-09."
+  },
+  "homeLibraryTitle": "Baru Ditambahkan",
+  "@homeLibraryTitle": {
+    "description": "P3: K-F2-08/K-F2-09."
+  },
+  "playAll": "Putar Semua",
+  "@playAll": {
+    "description": "P3: K-F2-08/K-F2-09."
+  },
+  "addToPlaylist": "Tambah ke playlist",
+  "@addToPlaylist": {
+    "description": "P3: UI library."
+  },
+  "favorite": "Favorit",
+  "@favorite": {
+    "description": "P3: UI library."
+  },
+  "playlistDescriptionLabel": "Deskripsi (opsional)",
+  "@playlistDescriptionLabel": {
+    "description": "P3: UI library."
+  },
+  "playlistDescriptionHint": "Ceritakan isi playlist ini",
+  "@playlistDescriptionHint": {
+    "description": "P3: UI library."
+  },
+  "playlistDescriptionTooLong": "Deskripsi maksimal 500 karakter.",
+  "@playlistDescriptionTooLong": {
+    "description": "P3: UI library."
+  },
+  "removeFromLibrary": "Hapus dari Library",
+  "@removeFromLibrary": {
+    "description": "P3: UI library."
+  }
 }

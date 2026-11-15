@@ -1,0 +1,23 @@
+# Opsi build_runner untuk Laras.
+#
+# drift_dev:
+# - sql.options.modules [fts5]: daftarkan modul FTS5 ke penganalisis SQL
+#   drift, supaya tabel virtual di lib/data/schema.drift dikenali (tanpa
+#   ini, drift_dev gagal menganalisis tabel dengan "Unknown module fts5").
+#   Bentuknya WAJIB `sql.options`, bukan `sqlite`: perintah
+#   `drift_dev schema dump` menambahkan opsi `sql` miliknya sendiri dan
+#   drift menolak `sqlite` + `sql` dipakai bersamaan.
+# - generate_manager false: service memakai API select/insert drift
+#   klasik dan tidak memakai manager hasil codegen. Mematikan manager
+#   memangkas file hasil codegen secara signifikan (APK sudah mepet
+#   batas 25 MB per ABI).
+targets:
+  $default:
+    builders:
+      drift_dev:
+        options:
+          generate_manager: false
+          sql:
+            options:
+              modules:
+                - fts5

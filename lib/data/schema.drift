@@ -1,0 +1,20 @@
+-- Tabel FTS5 untuk pencarian lokal (judul lagu + nama artis).
+--
+-- Satu tabel untuk dua jenis entitas, dibedakan kolom `kind`:
+-- kind 'song'   -> ref_id adalah songs.id, title judul lagu,
+--                  names nama-nama artis digabung spasi.
+-- kind 'artist' -> ref_id adalah artists.id, title nama artis,
+--                  names kosong.
+--
+-- Kolom kind dan ref_id UNINDEXED: disimpan tapi tidak diindeks teks,
+-- supaya MATCH hanya mencocokkan title dan names. Baris FTS ditulis
+-- LibraryService dalam transaksi yang sama dengan baris aslinya, jadi
+-- indeks tidak pernah ketinggalan dari data. `rebuildFts()` membangun
+-- ulang seluruh isi dari tabel bila suatu saat perlu diperbaiki.
+CREATE VIRTUAL TABLE library_search USING fts5(
+  kind UNINDEXED,
+  ref_id UNINDEXED,
+  title,
+  names,
+  tokenize = 'unicode61'
+);

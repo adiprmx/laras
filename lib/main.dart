@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:laras/core/theme/app_theme.dart';
+import 'package:laras/data/database.dart';
 import 'package:laras/features/downloads/downloads_screen.dart';
 import 'package:laras/features/home/home_screen.dart';
 import 'package:laras/features/library/library_screen.dart';
@@ -10,11 +11,41 @@ import 'package:laras/features/search/search_screen.dart';
 import 'package:laras/features/settings/settings_screen.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/player/player.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final PlayerService playerService = await PlayerService.create();
-  runApp(LarasApp(playerService: playerService));
+  // Database dibuka sekali di awal. Bila gagal (mis. file rusak), app
+  // tetap jalan tanpa Library: layar Library menampilkan pesan jujur
+  // dan tombol favorit disembunyikan — pemutaran tidak ikut mati.
+  LibraryService? libraryService;
+  bool libraryFailed = false;
+  try {
+    final LarasDatabase db = await openLarasDatabase();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    libraryService = LibraryService(
+      db,
+      sortPrefs: LibrarySortPrefs(prefs: prefs),
+    );
+    // Pencatat riwayat hidup selama app: subscription-nya dipegang oleh
+    // stream port, jadi variabel lokal boleh lepas sesudah start.
+    final PlayHistoryRecorder recorder = PlayHistoryRecorder(
+      port: playerService.port,
+      library: libraryService,
+    );
+    recorder.start();
+  } catch (error, stackTrace) {
+    debugPrint('Laras: database gagal dibuka: $error\n$stackTrace');
+    libraryFailed = true;
+  }
+  runApp(
+    LarasApp(
+      playerService: playerService,
+      libraryService: libraryService,
+      libraryFailed: libraryFailed,
+    ),
+  );
 }
 
 /// Laras: pemutar musik Android gratis, tanpa iklan, bisa offline.
@@ -22,17 +53,25 @@ Future<void> main() async {
 /// v1 hanya memakai mode gelap dan Bahasa Indonesia. Semua string UI tinggal
 /// di `lib/l10n/app_id.arb`; tidak ada string yang di-hardcode di widget.
 ///
-/// [playerService] boleh null bila app dipompa di widget test tanpa
-/// player: slot mini-player lalu kosong dan tidak ada yang crash.
+/// [playerService] dan [libraryService] boleh null bila app dipompa di
+/// widget test tanpa player/database: slot mini-player lalu kosong, layar
+/// Library menampilkan empty state, dan tidak ada yang crash.
 class LarasApp extends StatelessWidget {
-  const LarasApp({super.key, this.playerService});
+  const LarasApp({
+    super.key,
+    this.playerService,
+    this.libraryService,
+    this.libraryFailed = false,
+  });
 
   final PlayerService? playerService;
+  final LibraryService? libraryService;
+  final bool libraryFailed;
 
   @override
   Widget build(BuildContext context) {
     final PlayerService? service = playerService;
-    final Widget app = MaterialApp(
+    Widget app = MaterialApp(
       onGenerateTitle: (BuildContext context) =>
           AppLocalizations.of(context)!.appTitle,
       theme: AppTheme.dark,
@@ -47,6 +86,11 @@ class LarasApp extends StatelessWidget {
       supportedLocales: const <Locale>[Locale('id')],
       home: const HomeShell(),
     );
+    app = LibraryScope(
+      service: libraryService,
+      failed: libraryFailed,
+      child: app,
+    );
     if (service == null) return app;
     return PlayerScope(service: service, child: app);
   }
@@ -56,7 +100,7 @@ class LarasApp extends StatelessWidget {
 /// slot mini-player di atas tab bawah.
 ///
 /// Mini-player hanya tampil bila ada lagu di player. Ketuk mini-player
-/// membuka Player layar penuh.
+/// membuka Player layar penuh dengan transisi naik dari bawah.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -66,12 +110,6 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _selectedIndex = 0;
-
-  void _goToSearch() {
-    setState(() {
-      _selectedIndex = 1;
-    });
-  }
 
   void _openSettings() {
     Navigator.of(context).push(
@@ -91,6 +129,7 @@ class _HomeShellState extends State<HomeShell> {
     final PlayerService? service = PlayerScope.maybeOf(context);
     if (service == null) return const SizedBox.shrink();
     final AudioPlayerPort port = service.port;
+    final LibraryService? libraryService = LibraryScope.maybeOf(context);
     return StreamBuilder<PlayerSnapshot>(
       stream: port.stateStream,
       initialData: port.snapshot,
@@ -102,29 +141,85 @@ class _HomeShellState extends State<HomeShell> {
           stream: port.positionStream,
           initialData: port.position,
           builder: (BuildContext context, AsyncSnapshot<Duration> posShot) {
-            return MiniPlayer(
-              title: track.title,
-              artist: track.artist,
-              isPlaying: snap.playing,
-              position: posShot.data ?? port.position,
-              duration: snap.duration ?? track.duration,
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (BuildContext context) =>
-                        PlayerScreen(port: port),
-                  ),
+            MiniPlayer buildMini({
+              bool? isFavorite,
+              VoidCallback? onToggleFavorite,
+            }) {
+              return MiniPlayer(
+                title: track.title,
+                artist: track.artist,
+                artUri: track.artUri,
+                isPlaying: snap.playing,
+                position: posShot.data ?? port.position,
+                duration: snap.duration ?? track.duration,
+                isFavorite: isFavorite,
+                onToggleFavorite: onToggleFavorite,
+                onTap: () {
+                  Navigator.of(context).push(
+                    PageRouteBuilder<void>(
+                      pageBuilder:
+                          (
+                            BuildContext context,
+                            Animation<double> animation,
+                            Animation<double> secondaryAnimation,
+                          ) => PlayerScreen(port: port),
+                      transitionsBuilder:
+                          (
+                            BuildContext context,
+                            Animation<double> animation,
+                            Animation<double> secondaryAnimation,
+                            Widget child,
+                          ) {
+                            final CurvedAnimation curved =
+                                CurvedAnimation(
+                                  parent: animation,
+                                  curve: Curves.easeOutCubic,
+                                  reverseCurve: Curves.easeInCubic,
+                                );
+                            return SlideTransition(
+                              position:
+                                  Tween<Offset>(
+                                    begin: const Offset(0, 1),
+                                    end: Offset.zero,
+                                  ).animate(curved),
+                              child: FadeTransition(
+                                opacity: curved,
+                                child: child,
+                              ),
+                            );
+                          },
+                    ),
+                  );
+                },
+                onPlayPause: () {
+                  if (snap.playing) {
+                    port.pause();
+                  } else {
+                    port.play();
+                  }
+                },
+                onPrevious: () => port.skipToPrevious(),
+                onNext: () => port.skipToNext(),
+              );
+            }
+
+            final LibraryService? library = libraryService;
+            if (library == null) return buildMini();
+            return StreamBuilder<bool>(
+              stream: library.watchIsLiked(track.videoId),
+              initialData: false,
+              builder: (BuildContext context, AsyncSnapshot<bool> likeShot) {
+                return buildMini(
+                  isFavorite: likeShot.data ?? false,
+                  onToggleFavorite: () async {
+                    await library.upsertSong(
+                      track.toSongsCompanion(),
+                      artistNames: track.artistNames,
+                    );
+                    await library.toggleLiked(track.videoId);
+                  },
                 );
               },
-              onPlayPause: () {
-                if (snap.playing) {
-                  port.pause();
-                } else {
-                  port.play();
-                }
-              },
-              onPrevious: () => port.skipToPrevious(),
-              onNext: () => port.skipToNext(),
             );
           },
         );
@@ -139,13 +234,10 @@ class _HomeShellState extends State<HomeShell> {
       body: IndexedStack(
         index: _selectedIndex,
         children: <Widget>[
-          HomeScreen(onSearchRequested: _goToSearch),
+          const HomeScreen(),
           const SearchScreen(),
-          LibraryScreen(
-            onSearchRequested: _goToSearch,
-            onSettingsRequested: _openSettings,
-          ),
-          DownloadsScreen(onSearchRequested: _goToSearch),
+          LibraryScreen(onSettingsRequested: _openSettings),
+          const DownloadsScreen(),
         ],
       ),
       bottomNavigationBar: Column(

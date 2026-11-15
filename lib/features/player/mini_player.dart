@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:laras/core/theme/app_colors.dart';
 import 'package:laras/core/theme/app_theme.dart';
+import 'package:laras/core/widgets/album_cover.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 
 /// Mini-player 64 dp yang mengambang di atas tab bawah.
@@ -22,6 +23,9 @@ class MiniPlayer extends StatelessWidget {
     required this.onPrevious,
     this.position = Duration.zero,
     this.duration,
+    this.artUri,
+    this.isFavorite,
+    this.onToggleFavorite,
   });
 
   final String title;
@@ -37,6 +41,16 @@ class MiniPlayer extends StatelessWidget {
 
   /// Durasi lagu, null bila belum diketahui.
   final Duration? duration;
+
+  /// Sampul lagu; null menampilkan ikon not balok.
+  final Uri? artUri;
+
+  /// Status favorit lagu saat ini; null berarti tombol hati disembunyikan
+  /// (tidak ada library).
+  final bool? isFavorite;
+
+  /// Aksi tombol hati; null menyembunyikan tombolnya.
+  final VoidCallback? onToggleFavorite;
 
   @override
   Widget build(BuildContext context) {
@@ -82,19 +96,9 @@ class MiniPlayer extends StatelessWidget {
                       child: Row(
                         children: <Widget>[
                           const SizedBox(width: AppSpacing.xs),
-                          Container(
-                            width: AppSizes.touchTarget,
-                            height: AppSizes.touchTarget,
-                            decoration: const BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.all(
-                                Radius.circular(AppRadius.coverSmall),
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.music_note_outlined,
-                              color: AppColors.textMuted,
-                            ),
+                          AlbumCover(
+                            artUri: artUri,
+                            size: AppSizes.touchTarget,
                           ),
                           const SizedBox(width: AppSpacing.sm),
                           Expanded(
@@ -122,6 +126,21 @@ class MiniPlayer extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (onToggleFavorite != null)
+                    IconButton(
+                      onPressed: onToggleFavorite,
+                      tooltip: isFavorite == true
+                          ? strings.favoriteRemove
+                          : strings.favoriteAdd,
+                      icon: Icon(
+                        isFavorite == true
+                            ? Icons.favorite
+                            : Icons.favorite_border,
+                        color: isFavorite == true
+                            ? AppColors.accent
+                            : AppColors.textMuted,
+                      ),
+                    ),
                   IconButton(
                     onPressed: onPrevious,
                     tooltip: strings.previousSong,
