@@ -6,6 +6,15 @@
 # engine, JIT, debug symbols — run 43728749979 measured 90.3 MB arm64-v8a,
 # 68.7 MB armeabi-v7a, 76.4 MB x86_64 for the skeleton), so their sizes are
 # reported only and never gate the build.
+#
+# ABIs shipped: arm64-v8a + armeabi-v7a only (K-F2-11). x86_64 was dropped
+# after P3: it is an emulator-only ABI, and its release APK had reached
+# 26,161,237 bytes — 53,163 bytes under the limit, a breach waiting for
+# the next package. Real phones are arm64/armeabi-v7a.
+#
+# Release builds use --obfuscate with split debug info (K-F2-11):
+# obfuscation shrinks libapp.so (the biggest APK entry after the engine),
+# and the symbols artifact keeps stack traces symbolizable.
 name: CI
 
 on:
@@ -60,7 +69,7 @@ jobs:
         run: flutter test --exclude-tags live
 
       - name: Build debug APK (split per ABI)
-        run: flutter build apk --debug --split-per-abi
+        run: flutter build apk --debug --split-per-abi --target-platform android-arm,android-arm64
 
       # Debug APKs are larger by design (unstripped engine, JIT, debug
       # symbols). Their sizes are reported for visibility and never fail
@@ -76,7 +85,7 @@ jobs:
       # android/app/build.gradle.kts) — these APKs are NOT for
       # distribution. Proper release signing arrives in P10.
       - name: Build release APK (split per ABI)
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols
 
       # K4: release APK, max 25 MB per ABI.
       - name: Check release APK size (max 25 MB each)
@@ -115,4 +124,13 @@ jobs:
         with:
           name: laras-release-apks-debug-signed
           path: build/app/outputs/flutter-apk/*-release.apk
+          retention-days: 14
+
+      # Obfuscation mapping for this build, so a crash stack trace from
+      # the demo APK can be symbolized with `flutter symbolize`.
+      - name: Upload debug symbols
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: laras-release-symbols
+          path: build/app/outputs/symbols
           retention-days: 14

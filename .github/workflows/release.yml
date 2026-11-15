@@ -1,6 +1,11 @@
 # Release: build signed release APKs and an AAB when a v* tag is pushed,
 # then publish a GitHub Release with SHA-256 checksums.
 #
+# ABIs shipped: arm64-v8a + armeabi-v7a only (K-F2-11). x86_64 was dropped
+# after P3: emulator-only ABI, 53,163 bytes under the 25 MB limit.
+# Release APKs are obfuscated; the debug symbols are published with the
+# release so crash stack traces stay symbolizable.
+#
 # Signing secrets (created in P10, before the first release):
 #   ANDROID_KEYSTORE_BASE64    - base64 of the upload keystore (.jks)
 #   ANDROID_KEYSTORE_PASSWORD  - keystore password
@@ -77,8 +82,10 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
+      # Live tests (tag `live`) are excluded here as in CI: they call
+      # real InnerTube + GitHub Releases and would be flaky in CI.
       - name: Test
-        run: flutter test
+        run: flutter test --exclude-tags live
 
       - name: Prepare signing files
         env:
@@ -96,10 +103,10 @@ jobs:
           } > android/key.properties
 
       - name: Build release APKs (split per ABI)
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols
 
       - name: Build release AAB
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release --target-platform android-arm,android-arm64
 
       - name: Check APK size (max 25 MB each)
         run: |
@@ -118,10 +125,16 @@ jobs:
             exit 1
           fi
 
+      - name: Archive debug symbols
+        run: |
+          cd build/app/outputs
+          zip -qr flutter-apk/symbols.zip symbols
+          ls -la flutter-apk/symbols.zip
+
       - name: Compute SHA-256 checksums
         run: |
           cd build/app/outputs/flutter-apk
-          sha256sum *.apk > SHA256SUMS.txt
+          sha256sum *.apk symbols.zip > SHA256SUMS.txt
           cd ../../bundle/release
           sha256sum *.aab >> ../../flutter-apk/SHA256SUMS.txt
           cat ../../flutter-apk/SHA256SUMS.txt
@@ -161,4 +174,5 @@ jobs:
             --notes-file RELEASE_NOTES.md \
             build/app/outputs/flutter-apk/*.apk \
             build/app/outputs/bundle/release/*.aab \
+            build/app/outputs/flutter-apk/symbols.zip \
             build/app/outputs/flutter-apk/SHA256SUMS.txt

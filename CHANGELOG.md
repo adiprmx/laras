@@ -12,6 +12,21 @@ the app now stores a real library, playlists, favorites, and play
 history in SQLite (drift), and the home screen shows songs that play
 directly. Online search (P4) and downloads (P5) are still to come.
 
+### Changed
+
+- APKs are now built for arm64-v8a and armeabi-v7a only. The x86_64 ABI
+  was dropped: it runs on emulators only, and after P3 its release APK
+  reached 26,161,237 bytes — 53,163 bytes under the 25 MB limit, a
+  breach waiting for the next package.
+- Release builds are now obfuscated (`--obfuscate` with split debug
+  info) to shrink the app code; the debug symbols are published with
+  each release so crash stack traces stay symbolizable.
+
+### Fixed
+
+- Release workflow no longer runs live-tagged tests (same exclusion
+  as CI: `flutter test --exclude-tags live`).
+
 ### Added
 
 - Local database (drift + SQLite, schema v1): 15 tables (songs, albums,
