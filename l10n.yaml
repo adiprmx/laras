@@ -1,0 +1,6 @@
+# Lokalisasi Laras. v1 hanya Bahasa Indonesia; Bahasa Inggris bisa ditambah
+# pasca-v1 tanpa mengubah kode tampilan, karena semua string tinggal di ARB.
+arb-dir: lib/l10n
+template-arb-file: app_id.arb
+output-localization-file: app_localizations.dart
+output-dir: lib/l10n/generated

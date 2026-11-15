@@ -1,0 +1,592 @@
+{
+  "@@last_modified": "2026-11-15T14:20:00.000",
+  "@@locale": "id",
+  "@aboutLicenses": {
+    "description": "Baris dan layar Tentang."
+  },
+  "@addSongs": {
+    "description": "Tombol tambah lagu ke playlist."
+  },
+  "@alreadyDownloaded": {
+    "description": "Label lagu yang sudah diunduh."
+  },
+  "@appTitle": {
+    "description": "Nama app, tampil di judul app dan layar Tentang."
+  },
+  "@appVolume": {
+    "description": "Label slider volume pemutar di sheet Suara."
+  },
+  "@appVolumeNote": {
+    "description": "Keterangan slider volume pemutar."
+  },
+  "@cancel": {
+    "description": "Label kanonis tombol batal di seluruh app."
+  },
+  "@cannotCalculate": {
+    "description": "Teks baris cache saat ukuran tidak bisa dibaca."
+  },
+  "@cannotPlayLabel": {
+    "description": "Label lagu yang tidak bisa diputar."
+  },
+  "@checkForUpdates": {
+    "description": "Label kanonis tombol refresh config remote di seluruh app."
+  },
+  "@checking": {
+    "description": "Teks tombol Periksa pembaruan selama refresh berjalan."
+  },
+  "@clearPlayedSongsSpace": {
+    "description": "Label tombol hapus cache streaming."
+  },
+  "@createPlaylist": {
+    "description": "Tombol buat playlist baru."
+  },
+  "@delete": {
+    "description": "Label kanonis tombol hapus di seluruh app."
+  },
+  "@deleteAll": {
+    "description": "Tombol hapus semua riwayat pencarian."
+  },
+  "@deleteDownloadTitle": {
+    "description": "Judul dialog hapus unduhan."
+  },
+  "@download": {
+    "description": "Label tombol unduh."
+  },
+  "@downloadAlbumTitle": {
+    "description": "Judul dialog unduh satu album."
+  },
+  "@downloadCount": {
+    "description": "Pertanyaan konfirmasi unduh album atau playlist, memakai jumlah dan ukuran nyata.",
+    "placeholders": {
+      "count": {
+        "example": "12",
+        "type": "int"
+      },
+      "size": {
+        "example": "50 MB",
+        "type": "String"
+      }
+    }
+  },
+  "@downloadDone": {
+    "description": "Pesan saat unduhan selesai."
+  },
+  "@downloadFailed": {
+    "description": "Pesan saat satu unduhan gagal."
+  },
+  "@downloadQuality": {
+    "description": "Baris pengaturan kualitas unduhan default."
+  },
+  "@downloadSongTitle": {
+    "description": "Judul dialog unduh satu lagu."
+  },
+  "@downloadStorageSettings": {
+    "description": "Baris dan layar Pengaturan unduhan dan penyimpanan."
+  },
+  "@downloadWaiting": {
+    "description": "Status unduhan yang tertunda karena offline."
+  },
+  "@downloadsEmptyBody": {
+    "description": "Isi empty state Unduhan."
+  },
+  "@downloadsEmptyTitle": {
+    "description": "Judul empty state Unduhan."
+  },
+  "@downloadsSummary": {
+    "description": "Ringkasan penyimpanan di tab Unduhan, memakai angka nyata dari database.",
+    "placeholders": {
+      "count": {
+        "example": "12",
+        "type": "int"
+      },
+      "size": {
+        "example": "50 MB",
+        "type": "String"
+      }
+    }
+  },
+  "@exploreFailedHttp": {
+    "description": "Pesan saat browse gagal karena HTTP error."
+  },
+  "@exploreFailedParse": {
+    "description": "Pesan saat browse gagal di-parse, menandakan YouTube berubah."
+  },
+  "@exploreNeedsInternet": {
+    "description": "Pesan saat seksi Jelajah dibuka tanpa internet."
+  },
+  "@exportBackup": {
+    "description": "Baris ekspor backup."
+  },
+  "@favorites": {
+    "description": "Judul daftar lagu favorit."
+  },
+  "@fileMissing": {
+    "description": "Pesan saat file unduhan hilang atau rusak."
+  },
+  "@filterAll": {
+    "description": "Chip filter hasil pencarian: semua sumber."
+  },
+  "@filterLibraryOnly": {
+    "description": "Chip filter hasil pencarian: library lokal saja."
+  },
+  "@freeSpace": {
+    "description": "Teks sisa ruang HP di dialog unduh, memakai angka nyata dari sistem.",
+    "placeholders": {
+      "size": {
+        "example": "12,4 GB",
+        "type": "String"
+      }
+    }
+  },
+  "@fromYourLibrary": {
+    "description": "Label kelompok hasil dari library lokal."
+  },
+  "@history": {
+    "description": "Judul daftar riwayat putar."
+  },
+  "@homeEmptyBody": {
+    "description": "Isi empty state Beranda untuk pengguna baru tanpa data."
+  },
+  "@homeEmptyTitle": {
+    "description": "Judul empty state Beranda untuk pengguna baru tanpa data."
+  },
+  "@importBackup": {
+    "description": "Baris impor backup."
+  },
+  "@lastChecked": {
+    "description": "Teks di layar Status layanan setelah refresh tidak memperbaiki keadaan.",
+    "placeholders": {
+      "time": {
+        "example": "pukul 10.15",
+        "type": "String"
+      }
+    }
+  },
+  "@libraryEmptyBody": {
+    "description": "Isi empty state Library."
+  },
+  "@libraryEmptyTitle": {
+    "description": "Judul empty state Library."
+  },
+  "@libraryFailed": {
+    "description": "Pesan saat database library gagal dibuka."
+  },
+  "@linkCannotOpen": {
+    "description": "Pesan saat deep link dari luar app tidak valid."
+  },
+  "@loadingMore": {
+    "description": "Baris kecil di ujung daftar saat halaman berikut dimuat."
+  },
+  "@loudnessBoost": {
+    "description": "Label saklar AndroidLoudnessEnhancer."
+  },
+  "@loudnessBoostNote": {
+    "description": "Keterangan jujur di bawah saklar pengeras suara."
+  },
+  "@lyrics": {
+    "description": "Judul tab lirik di Player."
+  },
+  "@lyricsFailed": {
+    "description": "Pesan saat lirik gagal dimuat karena jaringan."
+  },
+  "@lyricsMissing": {
+    "description": "Pesan saat penyedia lirik tidak punya lirik lagu ini."
+  },
+  "@lyricsNotSaved": {
+    "description": "Pesan saat offline dan lirik belum di-cache."
+  },
+  "@lyricsNotice": {
+    "description": "Pemberitahuan satu kali sebelum request lirik pertama."
+  },
+  "@lyricsUnavailable": {
+    "description": "Pesan singkat di tab Lirik saat lirik tidak tersedia."
+  },
+  "@manageStorage": {
+    "description": "Tombol dari banner storage penuh ke layar penyimpanan."
+  },
+  "@nextSong": {
+    "description": "Label tombol dan label aksesibilitas lagu berikutnya."
+  },
+  "@nextSongNotSaved": {
+    "description": "Pesan di Player saat lagu berikut belum tersimpan dan tidak ada internet."
+  },
+  "@noEqualizer": {
+    "description": "Pesan saat perangkat tidak menyediakan equalizer."
+  },
+  "@noInternet": {
+    "description": "Pesan saat tidak ada internet dan aksi butuh jaringan."
+  },
+  "@notEnoughSpace": {
+    "description": "Peringatan di dialog unduh saat ukuran melebihi sisa ruang."
+  },
+  "@notificationPermissionOff": {
+    "description": "Pesan saat izin notifikasi ditolak pengguna."
+  },
+  "@nowPlaying": {
+    "description": "Teks kecil di bar atas Player."
+  },
+  "@offlineBanner": {
+    "description": "Banner offline di Beranda."
+  },
+  "@offlineShort": {
+    "description": "Indikator offline singkat di layar utama dan pencarian."
+  },
+  "@onlineResultsFailed": {
+    "description": "Pesan saat hasil jaringan gagal, hasil lokal tetap tampil."
+  },
+  "@openDownloadedSongs": {
+    "description": "Tombol dari pesan gagal putar ke tab Unduhan."
+  },
+  "@openPhoneSettings": {
+    "description": "Tombol membuka Pengaturan HP."
+  },
+  "@pause": {
+    "description": "Label aksesibilitas tombol jeda."
+  },
+  "@play": {
+    "description": "Label tombol putar dan label aksesibilitas."
+  },
+  "@playDownloads": {
+    "description": "Tombol dari pesan offline di Player ke tab Unduhan."
+  },
+  "@playbackSettings": {
+    "description": "Baris dan layar Pengaturan pemutaran."
+  },
+  "@playedSongsSpace": {
+    "description": "Label layar batas cache streaming. Kata cache tidak pernah tampil di layar."
+  },
+  "@playedSongsSpaceCleared": {
+    "description": "Pesan setelah cache streaming dihapus."
+  },
+  "@playlistDeleted": {
+    "description": "Pesan saat playlist terhapus dari layar lain."
+  },
+  "@playlistEmpty": {
+    "description": "Pesan saat playlist kosong."
+  },
+  "@playlists": {
+    "description": "Judul bagian playlist."
+  },
+  "@preparingSong": {
+    "description": "Teks status di Player, hanya tampil bila menyiapkan lagu melewati 2 detik."
+  },
+  "@previousSong": {
+    "description": "Label aksesibilitas lagu sebelumnya."
+  },
+  "@qualityBalanced": {
+    "description": "Label kanonis kualitas unduhan tengah."
+  },
+  "@qualityBalancedDesc": {
+    "description": "Penjelasan kualitas Seimbang di dialog unduh."
+  },
+  "@qualityBest": {
+    "description": "Label kanonis kualitas unduhan tertinggi."
+  },
+  "@qualityBestDesc": {
+    "description": "Penjelasan kualitas Terbaik di dialog unduh."
+  },
+  "@qualityDataSaver": {
+    "description": "Label kanonis kualitas unduhan terendah dan saklar streaming hemat data."
+  },
+  "@qualityDataSaverDesc": {
+    "description": "Penjelasan kualitas Hemat data di dialog unduh."
+  },
+  "@queue": {
+    "description": "Judul panel dan layar antrean."
+  },
+  "@queueEmpty": {
+    "description": "Pesan saat antrean tidak berisi lagu berikut."
+  },
+  "@queueFull": {
+    "description": "Pesan saat antrean 200 lagu sudah penuh. Angka 200 adalah batas nyata sistem."
+  },
+  "@recentSearches": {
+    "description": "Judul bagian riwayat pencarian."
+  },
+  "@redownload": {
+    "description": "Tombol unduh ulang file yang hilang atau rusak."
+  },
+  "@refreshFailed": {
+    "description": "Pesan saat refresh Jelajah gagal, data lama tetap tampil."
+  },
+  "@retry": {
+    "description": "Label kanonis tombol coba ulang di seluruh app."
+  },
+  "@searchComingSoon": {
+    "description": "Pesan jujur di tab Cari selama fitur pencarian belum dibangun (P0). Dihapus saat P4 selesai."
+  },
+  "@searchHint": {
+    "description": "Teks di layar Cari sebelum ada kueri dan sebelum ada riwayat."
+  },
+  "@searchInLibraryOnly": {
+    "description": "Tombol untuk membatasi pencarian ke library lokal."
+  },
+  "@searchNeedsInternet": {
+    "description": "Pesan saat offline di layar pencarian."
+  },
+  "@searchNoResults": {
+    "description": "Pesan saat pencarian tidak menemukan apa pun. Query ditampilkan persis seperti yang diketik pengguna.",
+    "placeholders": {
+      "query": {
+        "example": "payung teduh",
+        "type": "String"
+      }
+    }
+  },
+  "@searchSongs": {
+    "description": "Tombol aksi di empty state, membuka tab Cari."
+  },
+  "@sectionDownloads": {
+    "description": "Nama seksi Beranda: jalan pintas ke unduhan."
+  },
+  "@sectionExplore": {
+    "description": "Nama seksi Beranda: browse YouTube Music."
+  },
+  "@sectionFailed": {
+    "description": "Pesan saat satu seksi Beranda gagal dimuat."
+  },
+  "@sectionForYou": {
+    "description": "Nama seksi Beranda: rekomendasi lokal dari riwayat dengar."
+  },
+  "@sectionMostPlayed": {
+    "description": "Nama seksi Beranda: lagu yang paling sering diputar."
+  },
+  "@sectionNeedsInternet": {
+    "description": "Pesan saat satu seksi Beranda butuh internet."
+  },
+  "@sectionRecent": {
+    "description": "Nama seksi Beranda: lagu yang baru diputar."
+  },
+  "@sectionYourPlaylists": {
+    "description": "Nama seksi Beranda: playlist buatan pengguna."
+  },
+  "@seeAll": {
+    "description": "Tombol ke daftar penuh dari seksi atau kelompok hasil."
+  },
+  "@serviceBroken": {
+    "description": "Status layanan: ambang rusak tercapai."
+  },
+  "@serviceBrokenBanner": {
+    "description": "Banner merah di Beranda saat layanan bermasalah."
+  },
+  "@serviceDegraded": {
+    "description": "Status layanan: sebagian lagu sulit diputar."
+  },
+  "@serviceDegradedBanner": {
+    "description": "Banner kuning di Beranda saat layanan terganggu."
+  },
+  "@serviceExplanation": {
+    "description": "Penjelasan jujur di layar Status layanan."
+  },
+  "@serviceNormal": {
+    "description": "Status layanan: semua berjalan baik."
+  },
+  "@serviceStatus": {
+    "description": "Judul layar dan baris Status layanan."
+  },
+  "@settings": {
+    "description": "Judul layar Pengaturan dan label aksesibilitas ikon gerigi."
+  },
+  "@settingsComingSoon": {
+    "description": "Pesan jujur di layar Pengaturan selama fitur pengaturan belum dibangun (P0). Dihapus saat pengaturan selesai."
+  },
+  "@shuffle": {
+    "description": "Label tombol acak."
+  },
+  "@skipSilence": {
+    "description": "Label saklar skip silence."
+  },
+  "@skippedUnplayable": {
+    "description": "Pesan saat lagu yang tidak bisa diputar dilewati otomatis.",
+    "placeholders": {
+      "count": {
+        "example": "1",
+        "type": "int"
+      }
+    }
+  },
+  "@sleepTimer": {
+    "description": "Label fitur sleep timer."
+  },
+  "@sleepTimerCancelled": {
+    "description": "Pesan saat sleep timer batal karena pengguna ganti lagu."
+  },
+  "@sleepTimerDone": {
+    "description": "Pesan saat sleep timer habis dan pemutaran berhenti."
+  },
+  "@songCannotPlay": {
+    "description": "Pesan saat satu lagu gagal diputar setelah semua percobaan."
+  },
+  "@songNeedsInternet": {
+    "description": "Pesan saat lagu yang belum tersimpan diketuk tanpa internet."
+  },
+  "@songNotSaved": {
+    "description": "Pesan saat lagu yang belum tersimpan diketuk tanpa internet."
+  },
+  "@songsCannotPlay": {
+    "description": "Pesan setelah tiga lagu berturut-turut gagal diputar."
+  },
+  "@statusNeedsInternet": {
+    "description": "Pesan saat tombol periksa status ditekan tanpa internet."
+  },
+  "@storageFull": {
+    "description": "Pesan saat ruang HP habis dan unduhan gagal."
+  },
+  "@supportArtists": {
+    "description": "Satu baris ajakan mendukung kreator di layar Tentang."
+  },
+  "@tabDownloads": {
+    "description": "Label tab bawah keempat."
+  },
+  "@tabHome": {
+    "description": "Label tab bawah pertama."
+  },
+  "@tabLibrary": {
+    "description": "Label tab bawah ketiga. Kata Library dipertahankan dalam bahasa Inggris karena sudah dikenal pengguna pemutar musik Android."
+  },
+  "@tabSearch": {
+    "description": "Label tab bawah kedua."
+  },
+  "@understood": {
+    "description": "Tombol menutup pemberitahuan lirik."
+  },
+  "@viewDetails": {
+    "description": "Tombol teks di banner status untuk membuka layar Status layanan."
+  },
+  "aboutLicenses": "Tentang dan lisensi",
+  "addSongs": "Tambah lagu",
+  "alreadyDownloaded": "Sudah diunduh",
+  "appTitle": "Laras",
+  "appVolume": "Volume di app ini",
+  "appVolumeNote": "Terpisah dari tombol volume HP.",
+  "cancel": "Batal",
+  "cannotCalculate": "Tidak bisa dihitung",
+  "cannotPlayLabel": "Tidak bisa diputar",
+  "checkForUpdates": "Periksa pembaruan",
+  "checking": "Memeriksa...",
+  "clearPlayedSongsSpace": "Kosongkan ruang lagu yang pernah diputar",
+  "createPlaylist": "Buat playlist",
+  "delete": "Hapus",
+  "deleteAll": "Hapus semua",
+  "deleteDownloadTitle": "Hapus unduhan?",
+  "download": "Unduh",
+  "downloadAlbumTitle": "Unduh album ini",
+  "downloadCount": "Unduh {count} lagu (sekitar {size})?",
+  "downloadDone": "Unduhan selesai. Lagu tersimpan di HP dan bisa diputar tanpa internet.",
+  "downloadFailed": "Unduhan gagal. Coba lagi saat koneksi lebih stabil.",
+  "downloadQuality": "Kualitas unduhan",
+  "downloadSongTitle": "Unduh lagu ini",
+  "downloadStorageSettings": "Unduhan dan penyimpanan",
+  "downloadWaiting": "Menunggu internet",
+  "downloadsEmptyBody": "Ketuk ikon unduh di lagu mana pun untuk menyimpan dan memutarnya tanpa internet.",
+  "downloadsEmptyTitle": "Belum ada unduhan",
+  "downloadsSummary": "{count} lagu, {size}",
+  "exploreFailedHttp": "Bagian jelajah belum bisa dimuat. Coba lagi nanti.",
+  "exploreFailedParse": "Bagian jelajah belum bisa dimuat. YouTube mungkin mengubah layanannya.",
+  "exploreNeedsInternet": "Bagian jelajah butuh internet. Sambungkan internet untuk melihatnya.",
+  "exportBackup": "Ekspor cadangan",
+  "favorites": "Lagu favorit",
+  "fileMissing": "File lagu ini hilang atau rusak. Unduh ulang untuk memutar offline.",
+  "filterAll": "Semua",
+  "filterLibraryOnly": "Library saja",
+  "freeSpace": "Sisa ruang: {size}",
+  "fromYourLibrary": "Dari Library-mu",
+  "history": "Riwayat",
+  "homeEmptyBody": "Sambungkan internet sekali untuk mulai, atau buka Unduhan bila kamu sudah punya lagu tersimpan.",
+  "homeEmptyTitle": "Belum ada yang bisa ditampilkan",
+  "importBackup": "Impor cadangan",
+  "lastChecked": "Pembaruan terakhir diperiksa {time}. Bila masalah berlanjut, periksa lagi nanti atau perbarui app ke versi terbaru.",
+  "libraryEmptyBody": "Tandai lagu dengan hati atau buat playlist untuk mulai mengisinya.",
+  "libraryEmptyTitle": "Library-mu masih kosong",
+  "libraryFailed": "Library tidak bisa dibuka. Coba tutup app dan buka lagi.",
+  "linkCannotOpen": "Tautan ini tidak bisa dibuka di app",
+  "loadingMore": "Memuat lagu lainnya...",
+  "loudnessBoost": "Buat suara lebih keras",
+  "loudnessBoostNote": "Bukan penyeimbang volume antar lagu.",
+  "lyrics": "Lirik",
+  "lyricsFailed": "Lirik belum bisa dimuat. Periksa koneksimu lalu coba lagi.",
+  "lyricsMissing": "Lirik lagu ini belum ada.",
+  "lyricsNotSaved": "Lirik belum tersimpan. Sambungkan internet sekali untuk mengambilnya.",
+  "lyricsNotice": "Lirik diambil dari layanan luar. Layanan itu bisa melihat judul lagu yang kamu putar dan alamat internetmu.",
+  "lyricsUnavailable": "Lirik lagu ini belum tersedia.",
+  "manageStorage": "Kelola penyimpanan",
+  "nextSong": "Lagu berikutnya",
+  "nextSongNotSaved": "Tidak ada internet. Lagu berikut belum tersimpan di HP.",
+  "noEqualizer": "HP ini tidak menyediakan equalizer.",
+  "noInternet": "Tidak ada internet. Periksa koneksi, lalu coba lagi.",
+  "notEnoughSpace": "Ruang HP tidak cukup untuk pilihan ini. Pilih kualitas yang lebih kecil atau hapus file lain.",
+  "notificationPermissionOff": "Izin notifikasi mati. Nyalakan di Pengaturan HP supaya kontrol lagu muncul di layar kunci.",
+  "nowPlaying": "Sedang diputar",
+  "offlineBanner": "Kamu sedang offline. Lagu yang sudah diunduh tetap bisa diputar.",
+  "offlineShort": "Kamu sedang offline",
+  "onlineResultsFailed": "Hasil dari internet tidak bisa dimuat. Periksa internet, lalu coba lagi.",
+  "openDownloadedSongs": "Buka lagu yang diunduh",
+  "openPhoneSettings": "Buka pengaturan HP",
+  "pause": "Jeda",
+  "play": "Putar",
+  "playDownloads": "Putar unduhan",
+  "playbackSettings": "Pemutaran",
+  "playedSongsSpace": "Ruang untuk lagu yang pernah diputar",
+  "playedSongsSpaceCleared": "Ruang lagu yang pernah diputar sudah dikosongkan. Unduhan tidak ikut terhapus.",
+  "playlistDeleted": "Playlist sudah dihapus.",
+  "playlistEmpty": "Playlist ini belum ada lagunya.",
+  "playlists": "Playlist",
+  "preparingSong": "Menyiapkan lagu...",
+  "previousSong": "Lagu sebelumnya",
+  "qualityBalanced": "Seimbang",
+  "qualityBalancedDesc": "Suara bagus dan ukuran file lebih kecil.",
+  "qualityBest": "Terbaik",
+  "qualityBestDesc": "Suara paling bagus. Ukuran file paling besar.",
+  "qualityDataSaver": "Hemat data",
+  "qualityDataSaverDesc": "Ukuran file paling kecil. Cocok bila ruang HP sempit.",
+  "queue": "Antrean",
+  "queueEmpty": "Tidak ada lagu berikutnya. Tambah lagu dari daftar mana pun.",
+  "queueFull": "Antrean sudah penuh (200 lagu). Hapus sebagian dulu untuk menambah lagu.",
+  "recentSearches": "Terakhir dicari",
+  "redownload": "Unduh ulang",
+  "refreshFailed": "Gagal memperbarui. Menampilkan data terakhir.",
+  "retry": "Coba lagi",
+  "searchComingSoon": "Pencarian belum tersedia di build ini. Pencarian datang di build berikutnya.",
+  "searchHint": "Cari lagu, album, atau artis. Hasil dari library-mu muncul di sini juga.",
+  "searchInLibraryOnly": "Cari di library saja",
+  "searchNeedsInternet": "Butuh internet untuk mencari di luar library.",
+  "searchNoResults": "Tidak ada hasil untuk '{query}'. Coba kata kunci lain atau periksa ejaannya.",
+  "searchSongs": "Cari lagu",
+  "sectionDownloads": "Unduhan",
+  "sectionExplore": "Jelajah",
+  "sectionFailed": "Bagian ini tidak bisa dimuat. Periksa internet, lalu coba lagi.",
+  "sectionForYou": "Lagu untukmu",
+  "sectionMostPlayed": "Sering diputar",
+  "sectionNeedsInternet": "Butuh internet untuk menampilkan bagian ini.",
+  "sectionRecent": "Baru diputar",
+  "sectionYourPlaylists": "Playlist kamu",
+  "seeAll": "Lihat semua",
+  "serviceBroken": "Bermasalah",
+  "serviceBrokenBanner": "Lagu sedang tidak bisa diputar. Lagu yang sudah diunduh tetap jalan.",
+  "serviceDegraded": "Terganggu",
+  "serviceDegradedBanner": "Sebagian lagu sedang sulit diputar. Lagu yang sudah diunduh tetap jalan.",
+  "serviceExplanation": "App ini mengambil lagu dari layanan musik pihak ketiga. Bila layanan itu berubah, sebagian lagu bisa sulit diputar sampai app menyesuaikan diri. Lagu yang sudah diunduh tidak terpengaruh.",
+  "serviceNormal": "Normal",
+  "serviceStatus": "Status layanan",
+  "settings": "Pengaturan",
+  "settingsComingSoon": "Pengaturan belum tersedia di build ini. Pengaturan datang di build berikutnya.",
+  "shuffle": "Acak",
+  "skipSilence": "Lewati bagian hening",
+  "skippedUnplayable": "{count} lagu dilewati karena tidak bisa diputar.",
+  "sleepTimer": "Timer tidur",
+  "sleepTimerCancelled": "Timer dibatalkan karena kamu ganti lagu.",
+  "sleepTimerDone": "Pemutaran berhenti sesuai timer tidur.",
+  "songCannotPlay": "Lagu ini tidak bisa diputar sekarang. Coba lagu lain atau coba lagi nanti.",
+  "songNeedsInternet": "Lagu ini butuh internet. Unduh dulu supaya bisa didengar offline.",
+  "songNotSaved": "Lagu ini belum tersimpan di HP-mu. Sambungkan internet untuk memutarnya.",
+  "songsCannotPlay": "Lagu tidak bisa diputar sekarang. Periksa koneksi internet kamu, lalu coba lagi.",
+  "statusNeedsInternet": "Butuh internet untuk memeriksa status.",
+  "storageFull": "Penyimpanan HP penuh. Hapus beberapa unduhan atau file lain, lalu coba lagi.",
+  "supportArtists": "Suka lagu ini? Dukung artisnya dengan mendengarkan di layanan resmi atau membeli karyanya.",
+  "tabDownloads": "Unduhan",
+  "tabHome": "Beranda",
+  "tabLibrary": "Library",
+  "tabSearch": "Cari",
+  "understood": "Mengerti",
+  "viewDetails": "Lihat"
+}
