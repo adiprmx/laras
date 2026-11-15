@@ -219,6 +219,9 @@
   "@notEnoughSpace": {
     "description": "Peringatan di dialog unduh saat ukuran melebihi sisa ruang."
   },
+  "@notificationChannelName": {
+    "description": "Nama kanal notifikasi pemutaran di Pengaturan HP (sistem)."
+  },
   "@notificationPermissionOff": {
     "description": "Pesan saat izin notifikasi ditolak pengguna."
   },
@@ -243,6 +246,9 @@
   "@pause": {
     "description": "Label aksesibilitas tombol jeda."
   },
+  "@pitch": {
+    "description": "Label slider nada suara di sheet Pengaturan suara."
+  },
   "@play": {
     "description": "Label tombol putar dan label aksesibilitas."
   },
@@ -251,6 +257,9 @@
   },
   "@playbackSettings": {
     "description": "Baris dan layar Pengaturan pemutaran."
+  },
+  "@playbackSpeed": {
+    "description": "Label pilihan kecepatan putar di sheet Pengaturan suara."
   },
   "@playedSongsSpace": {
     "description": "Label layar batas cache streaming. Kata cache tidak pernah tampil di layar."
@@ -309,8 +318,20 @@
   "@refreshFailed": {
     "description": "Pesan saat refresh Jelajah gagal, data lama tetap tampil."
   },
+  "@repeatAll": {
+    "description": "Label aksesibilitas tombol ulangi saat mode ulangi semua aktif."
+  },
+  "@repeatOff": {
+    "description": "Label aksesibilitas tombol ulangi saat pengulangan mati."
+  },
+  "@repeatOne": {
+    "description": "Label aksesibilitas tombol ulangi saat mode ulangi satu lagu aktif."
+  },
   "@retry": {
     "description": "Label kanonis tombol coba ulang di seluruh app."
+  },
+  "@retryingSong": {
+    "description": "Status di Player saat lagu dicoba diputar lagi setelah koneksi terputus di tengah lagu."
   },
   "@searchComingSoon": {
     "description": "Pesan jujur di tab Cari selama fitur pencarian belum dibangun (P0). Dihapus saat P4 selesai."
@@ -441,6 +462,9 @@
   "@spikeDemoTitle": {
     "description": "Judul layar demo spike sementara."
   },
+  "@spikeDemoPaused": {
+    "description": "Status lagu demo spike yang dijeda."
+  },
   "@sleepTimerDone": {
     "description": "Pesan saat sleep timer habis dan pemutaran berhenti."
   },
@@ -455,6 +479,9 @@
   },
   "@songsCannotPlay": {
     "description": "Pesan setelah tiga lagu berturut-turut gagal diputar."
+  },
+  "@soundSettings": {
+    "description": "Judul sheet Pengaturan suara di Player (kecepatan, nada, lewati hening)."
   },
   "@statusNeedsInternet": {
     "description": "Pesan saat tombol periksa status ditekan tanpa internet."
@@ -545,6 +572,7 @@
   "noEqualizer": "HP ini tidak menyediakan equalizer.",
   "noInternet": "Tidak ada internet. Periksa koneksi, lalu coba lagi.",
   "notEnoughSpace": "Ruang HP tidak cukup untuk pilihan ini. Pilih kualitas yang lebih kecil atau hapus file lain.",
+  "notificationChannelName": "Pemutaran musik",
   "notificationPermissionOff": "Izin notifikasi mati. Nyalakan di Pengaturan HP supaya kontrol lagu muncul di layar kunci.",
   "nowPlaying": "Sedang diputar",
   "offlineBanner": "Kamu sedang offline. Lagu yang sudah diunduh tetap bisa diputar.",
@@ -553,9 +581,11 @@
   "openDownloadedSongs": "Buka lagu yang diunduh",
   "openPhoneSettings": "Buka pengaturan HP",
   "pause": "Jeda",
+  "pitch": "Nada suara",
   "play": "Putar",
   "playDownloads": "Putar unduhan",
   "playbackSettings": "Pemutaran",
+  "playbackSpeed": "Kecepatan putar",
   "playedSongsSpace": "Ruang untuk lagu yang pernah diputar",
   "playedSongsSpaceCleared": "Ruang lagu yang pernah diputar sudah dikosongkan. Unduhan tidak ikut terhapus.",
   "playlistDeleted": "Playlist sudah dihapus.",
@@ -575,7 +605,11 @@
   "recentSearches": "Terakhir dicari",
   "redownload": "Unduh ulang",
   "refreshFailed": "Gagal memperbarui. Menampilkan data terakhir.",
+  "repeatAll": "Ulangi semua lagu",
+  "repeatOff": "Pengulangan mati",
+  "repeatOne": "Ulangi lagu ini",
   "retry": "Coba lagi",
+  "retryingSong": "Koneksi terputus, mencoba memutar lagi...",
   "searchComingSoon": "Pencarian belum tersedia di build ini. Pencarian datang di build berikutnya.",
   "searchHint": "Cari lagu, album, atau artis. Hasil dari library-mu muncul di sini juga.",
   "searchInLibraryOnly": "Cari di library saja",
@@ -613,11 +647,13 @@
   "spikeDemoReadyIn": "Siap dalam {seconds} detik",
   "spikeDemoResolving": "Menyiapkan lagu...",
   "spikeDemoTitle": "Demo spike",
+  "spikeDemoPaused": "Dijeda",
   "sleepTimerDone": "Pemutaran berhenti sesuai timer tidur.",
   "songCannotPlay": "Lagu ini tidak bisa diputar sekarang. Coba lagu lain atau coba lagi nanti.",
   "songNeedsInternet": "Lagu ini butuh internet. Unduh dulu supaya bisa didengar offline.",
   "songNotSaved": "Lagu ini belum tersimpan di HP-mu. Sambungkan internet untuk memutarnya.",
   "songsCannotPlay": "Lagu tidak bisa diputar sekarang. Periksa koneksi internet kamu, lalu coba lagi.",
+  "soundSettings": "Pengaturan suara",
   "statusNeedsInternet": "Butuh internet untuk memeriksa status.",
   "storageFull": "Penyimpanan HP penuh. Hapus beberapa unduhan atau file lain, lalu coba lagi.",
   "supportArtists": "Suka lagu ini? Dukung artisnya dengan mendengarkan di layanan resmi atau membeli karyanya.",

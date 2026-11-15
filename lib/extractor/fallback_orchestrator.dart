@@ -37,31 +37,10 @@ import 'innertube_client.dart';
 import 'itag_picker.dart';
 import 'models.dart';
 import 'remote_config.dart';
-
-/// Satu baris log resolve (tanpa URL stream).
-class ResolveLogEntry {
-  const ResolveLogEntry({
-    required this.timestamp,
-    required this.videoId,
-    required this.clientName,
-    required this.outcome,
-    required this.durationMs,
-  });
-
-  final DateTime timestamp;
-  final String videoId;
-  final String clientName;
-  final String outcome;
-  final int durationMs;
-
-  @override
-  String toString() =>
-      '${timestamp.toIso8601String()} $videoId [$clientName] '
-      '$outcome ${durationMs}ms';
-}
+import 'resolver.dart';
 
 /// Orkestrator resolve + fallback.
-class StreamResolver {
+class StreamResolver implements AudioResolver {
   StreamResolver({
     required InnertubeClient innertube,
     required SignatureSolver solver,
@@ -81,9 +60,11 @@ class StreamResolver {
   final List<ResolveLogEntry> _log = <ResolveLogEntry>[];
 
   /// Log resolve terakhir (maks 50 baris, tanpa URL).
+  @override
   List<ResolveLogEntry> get recentLog => List<ResolveLogEntry>.unmodifiable(_log);
 
   /// Resolve satu lagu menjadi URL audio siap putar.
+  @override
   Future<ResolvedAudio> resolve(String videoId, {bool dataSaver = false}) {
     final Future<ResolvedAudio>? existing = _inFlight[videoId];
     if (existing != null) return existing;

@@ -21,3 +21,4 @@ export 'itag_picker.dart';
 export 'models.dart';
 export 'player_parser.dart';
 export 'remote_config.dart';
+export 'resolver.dart';

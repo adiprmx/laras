@@ -151,6 +151,28 @@ class ParsedPlayerResponse {
       audioFormats.isNotEmpty && audioFormats.every((f) => f.isSabr);
 }
 
+/// Satu baris log resolve (tanpa URL stream).
+class ResolveLogEntry {
+  const ResolveLogEntry({
+    required this.timestamp,
+    required this.videoId,
+    required this.clientName,
+    required this.outcome,
+    required this.durationMs,
+  });
+
+  final DateTime timestamp;
+  final String videoId;
+  final String clientName;
+  final String outcome;
+  final int durationMs;
+
+  @override
+  String toString() =>
+      '${timestamp.toIso8601String()} $videoId [$clientName] '
+      '$outcome ${durationMs}ms';
+}
+
 /// Satu hasil pencarian lagu dari YouTube Music.
 class SearchSong {
   const SearchSong({

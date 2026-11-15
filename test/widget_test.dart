@@ -101,6 +101,7 @@ void main() {
               tappedPlay = true;
             },
             onNext: () {},
+            onPrevious: () {},
           ),
         ),
       ),

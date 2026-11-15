@@ -1,163 +1,36 @@
 /// Layar demo spike SEMENTARA - hapus sebelum v1.0.0.
 ///
 /// Bukti ujung-ke-ujung untuk owner: daftar 5 lagu kanari, ketuk lagu
-/// -> resolve lewat [StreamResolver] -> putar via just_audio langsung.
-/// Menampilkan status tiap lagu (menyiapkan / diputar / gagal) dan catatan
-/// percobaan resolve (client yang dipakai + waktu, tanpa URL).
+/// -> diputar lewat [AudioPlayerPort] yang sama dengan seluruh app
+/// (bukan just_audio langsung), supaya uji perangkat owner menguji
+/// player core yang sesungguhnya. Menampilkan status tiap lagu
+/// (menyiapkan / diputar / dijeda / gagal) dan catatan percobaan
+/// resolve (client yang dipakai + waktu, tanpa URL).
 ///
 /// File ini + rute dari Beranda + string ARB `spikeDemo*` wajib dihapus
-/// sebelum rilis v1.0.0 (P2 menggantinya dengan Player sungguhan).
+/// sebelum rilis v1.0.0.
 library;
 
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:laras/core/theme/app_colors.dart';
 import 'package:laras/core/theme/app_theme.dart';
 import 'package:laras/extractor/extractor.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:laras/player/player.dart';
 
-enum _SongState { idle, resolving, playing, failed }
-
-class _SongRow {
-  _SongRow(this.song) : state = _SongState.idle;
-
-  final CanarySong song;
-  _SongState state;
-  String? statusLine;
-}
-
-class SpikeDemoScreen extends StatefulWidget {
+/// Layar demo spike: 5 lagu kanari yang diputar lewat player nyata.
+class SpikeDemoScreen extends StatelessWidget {
   const SpikeDemoScreen({super.key});
 
-  @override
-  State<SpikeDemoScreen> createState() => _SpikeDemoScreenState();
-}
-
-class _SpikeDemoScreenState extends State<SpikeDemoScreen> {
-  final List<_SongRow> _rows = kCanarySongs
-      .map<_SongRow>((CanarySong s) => _SongRow(s))
+  static final List<Track> _tracks = kCanarySongs
+      .map(
+        (CanarySong s) => Track(
+          videoId: s.videoId,
+          title: s.title,
+          duration: Duration(seconds: s.lengthSeconds),
+        ),
+      )
       .toList(growable: false);
-  final AudioPlayer _player = AudioPlayer();
-
-  StreamResolver? _resolver;
-  SignatureSolver? _solver;
-  List<ResolveLogEntry> _log = <ResolveLogEntry>[];
-  String? _initError;
-  bool _initializing = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _initExtractor();
-    _player.playerStateStream.listen((PlayerState state) {
-      if (!mounted) return;
-      if (state.processingState == ProcessingState.completed) {
-        _markPlayingAsIdle();
-      }
-    });
-  }
-
-  Future<void> _initExtractor() async {
-    try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final InnertubeClient innertube = InnertubeClient();
-      final QuickJsSignatureSolver solver = QuickJsSignatureSolver();
-      final StreamResolver resolver = StreamResolver(
-        innertube: innertube,
-        solver: solver,
-        configLoader: RemoteConfigLoader(prefs: prefs),
-        scriptLoader: PlayerScriptLoader(client: innertube),
-      );
-      if (!mounted) return;
-      setState(() {
-        _solver = solver;
-        _resolver = resolver;
-        _initializing = false;
-      });
-    } on Object catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _initError = e.toString();
-        _initializing = false;
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _player.dispose();
-    _solver?.dispose();
-    super.dispose();
-  }
-
-  void _markPlayingAsIdle() {
-    setState(() {
-      for (final _SongRow row in _rows) {
-        if (row.state == _SongState.playing) {
-          row.state = _SongState.idle;
-          row.statusLine = null;
-        }
-      }
-    });
-  }
-
-  Future<void> _onTapSong(_SongRow row) async {
-    final StreamResolver? resolver = _resolver;
-    if (resolver == null || row.state == _SongState.resolving) return;
-    if (row.state == _SongState.playing) {
-      await _player.stop();
-      setState(() {
-        row.state = _SongState.idle;
-        row.statusLine = null;
-      });
-      return;
-    }
-    for (final _SongRow other in _rows) {
-      if (other != row && other.state == _SongState.playing) {
-        other.state = _SongState.idle;
-        other.statusLine = null;
-      }
-    }
-    await _player.stop();
-    setState(() {
-      row.state = _SongState.resolving;
-      row.statusLine = null;
-    });
-    try {
-      final ResolvedAudio resolved = await resolver.resolve(row.song.videoId);
-      await _player.setUrl(resolved.url);
-      await _player.play();
-      if (!mounted) return;
-      final double seconds = resolved.resolveDuration.inMilliseconds / 1000;
-      setState(() {
-        row.state = _SongState.playing;
-        row.statusLine =
-            '${AppLocalizations.of(context)!.spikeDemoReadyIn(seconds.toStringAsFixed(1))} · ${resolved.clientName}';
-        _log = resolver.recentLog;
-      });
-    } on ExtractorException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        row.state = _SongState.failed;
-        row.statusLine = _plainMessage(e);
-        _log = resolver.recentLog;
-      });
-    } on Object {
-      if (!mounted) return;
-      setState(() {
-        row.state = _SongState.failed;
-        row.statusLine = AppLocalizations.of(context)!.songCannotPlay;
-        _log = resolver.recentLog;
-      });
-    }
-  }
-
-  String _plainMessage(ExtractorException e) {
-    final AppLocalizations strings = AppLocalizations.of(context)!;
-    if (e.isNetworkError) return strings.noInternet;
-    return strings.songCannotPlay;
-  }
 
   String _formatDuration(int seconds) {
     final int minutes = seconds ~/ 60;
@@ -165,86 +38,147 @@ class _SpikeDemoScreenState extends State<SpikeDemoScreen> {
     return '$minutes:${rest.toString().padLeft(2, '0')}';
   }
 
+  Future<void> _onTapSong(
+    BuildContext context,
+    AudioPlayerPort port,
+    PlayerSnapshot snap,
+    int index,
+  ) async {
+    final Track tapped = _tracks[index];
+    final Track? current = snap.currentTrack;
+    if (current != null && current.videoId == tapped.videoId) {
+      if (snap.playing) {
+        await port.pause();
+      } else {
+        await port.play();
+      }
+      return;
+    }
+    await port.setQueue(_tracks, initialIndex: index, autoplay: true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppLocalizations strings = AppLocalizations.of(context)!;
     final ThemeData theme = Theme.of(context);
+    final PlayerService? service = PlayerScope.maybeOf(context);
+    if (service == null) {
+      return Scaffold(
+        appBar: AppBar(title: Text(strings.spikeDemoTitle)),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Text(
+              strings.songCannotPlay,
+              style: theme.textTheme.bodyLarge,
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+    final AudioPlayerPort port = service.port;
     return Scaffold(
       appBar: AppBar(title: Text(strings.spikeDemoTitle)),
-      body: _initializing
-          ? const Center(child: CircularProgressIndicator())
-          : _initError != null
-          ? Center(
-              child: Padding(
+      body: StreamBuilder<PlayerSnapshot>(
+        stream: port.stateStream,
+        initialData: port.snapshot,
+        builder: (BuildContext context, AsyncSnapshot<PlayerSnapshot> shot) {
+          final PlayerSnapshot snap = shot.data ?? port.snapshot;
+          final List<ResolveLogEntry> log = service.resolveLog;
+          return ListView(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            children: <Widget>[
+              Container(
                 padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.all(color: AppColors.warning),
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: Text(
-                  strings.songCannotPlay,
-                  style: theme.textTheme.bodyLarge,
-                  textAlign: TextAlign.center,
+                  strings.spikeDemoBanner,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: AppColors.warning,
+                  ),
                 ),
               ),
-            )
-          : ListView(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              children: <Widget>[
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    border: Border.all(color: AppColors.warning),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    strings.spikeDemoBanner,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: AppColors.warning,
-                    ),
-                  ),
+              const SizedBox(height: AppSpacing.md),
+              ..._tracks.asMap().entries.map(
+                (MapEntry<int, Track> entry) => _buildRow(
+                  context,
+                  port: port,
+                  snap: snap,
+                  index: entry.key,
+                  track: entry.value,
                 ),
-                const SizedBox(height: AppSpacing.md),
-                ..._rows.map(_buildRow),
-                const SizedBox(height: AppSpacing.xl),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              Text(
+                strings.spikeDemoLogTitle,
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              if (log.isEmpty)
                 Text(
-                  strings.spikeDemoLogTitle,
-                  style: theme.textTheme.titleMedium,
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                if (_log.isEmpty)
-                  Text(
-                    strings.spikeDemoLogEmpty,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textMuted,
-                    ),
-                  )
-                else
-                  ..._log.reversed.map(
-                    (ResolveLogEntry entry) => Padding(
-                      padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-                      child: Text(
-                        '[${entry.clientName}] ${entry.outcome} '
-                        '(${entry.durationMs} ms)',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: AppColors.textMuted,
-                        ),
+                  strings.spikeDemoLogEmpty,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textMuted,
+                  ),
+                )
+              else
+                ...log.reversed.map(
+                  (ResolveLogEntry entry) => Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                    child: Text(
+                      '[${entry.clientName}] ${entry.outcome} '
+                      '(${entry.durationMs} ms)',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.textMuted,
                       ),
                     ),
                   ),
-              ],
-            ),
+                ),
+            ],
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildRow(_SongRow row) {
+  Widget _buildRow(
+    BuildContext context, {
+    required AudioPlayerPort port,
+    required PlayerSnapshot snap,
+    required int index,
+    required Track track,
+  }) {
     final AppLocalizations strings = AppLocalizations.of(context)!;
     final ThemeData theme = Theme.of(context);
-    final bool busy = row.state == _SongState.resolving;
-    final bool playing = row.state == _SongState.playing;
-    final bool failed = row.state == _SongState.failed;
+    final Track? current = snap.currentTrack;
+    final bool isCurrent =
+        current != null && current.videoId == track.videoId;
+    final bool busy =
+        isCurrent &&
+        (snap.status == PlayerStatus.loading ||
+            snap.status == PlayerStatus.buffering);
+    final bool playing = isCurrent && snap.playing;
+    final bool paused =
+        isCurrent && !snap.playing && snap.status == PlayerStatus.ready;
+    final bool failed =
+        isCurrent &&
+        snap.status == PlayerStatus.error &&
+        snap.lastError != null;
+    final ResolveInfo? info = snap.lastResolve;
+    final String? readyLine =
+        playing && info != null && info.videoId == track.videoId
+        ? '${strings.spikeDemoReadyIn((info.resolveDuration.inMilliseconds / 1000).toStringAsFixed(1))} · ${info.clientName}'
+        : null;
     return Card(
       color: AppColors.surface,
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: InkWell(
-        onTap: () => _onTapSong(row),
+        onTap: () => _onTapSong(context, port, snap, index),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
@@ -256,7 +190,7 @@ class _SpikeDemoScreenState extends State<SpikeDemoScreen> {
                 child: busy
                     ? const CircularProgressIndicator()
                     : Icon(
-                        playing ? Icons.stop : Icons.play_arrow,
+                        playing ? Icons.pause : Icons.play_arrow,
                         color: playing
                             ? AppColors.success
                             : AppColors.textPrimary,
@@ -268,13 +202,10 @@ class _SpikeDemoScreenState extends State<SpikeDemoScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
-                      row.song.title,
-                      style: theme.textTheme.titleSmall,
-                    ),
+                    Text(track.title, style: theme.textTheme.titleSmall),
                     const SizedBox(height: AppSpacing.xxs),
                     Text(
-                      _formatDuration(row.song.lengthSeconds),
+                      _formatDuration(track.duration?.inSeconds ?? 0),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: AppColors.textMuted,
                       ),
@@ -299,21 +230,33 @@ class _SpikeDemoScreenState extends State<SpikeDemoScreen> {
                           ),
                         ),
                       )
+                    else if (paused)
+                      Padding(
+                        padding: const EdgeInsets.only(top: AppSpacing.xxs),
+                        child: Text(
+                          strings.spikeDemoPaused,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      )
                     else if (failed)
                       Padding(
                         padding: const EdgeInsets.only(top: AppSpacing.xxs),
                         child: Text(
-                          row.statusLine ?? strings.songCannotPlay,
+                          snap.lastError!.kind == PlaybackFailureKind.network
+                              ? strings.noInternet
+                              : strings.songCannotPlay,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: AppColors.error,
                           ),
                         ),
                       ),
-                    if (playing && row.statusLine != null)
+                    if (readyLine != null)
                       Padding(
                         padding: const EdgeInsets.only(top: AppSpacing.xxs),
                         child: Text(
-                          row.statusLine!,
+                          readyLine,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: AppColors.textMuted,
                           ),
