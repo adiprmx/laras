@@ -31,6 +31,20 @@
 /// Tanpa mode ini, satu perubahan base.js YouTube mematikan SEMUA putar
 /// - persis insiden P0 16 Nov 2026.
 ///
+/// Mode terdegradasi juga bisa masuk di TENGAH loop (P0-2): bila load
+/// script gagal saat jalur cipher sesudah load awal berhasil (mis. hash
+/// player baru muncul saat load ulang), orkestrator TIDAK berhenti -
+/// client butuh-script yang tersisa dilewati dan client bebas-script
+/// tetap dicoba. Versi lama `break` dari loop di titik ini dan VR tidak
+/// pernah dicoba walau VR tidak butuh script sama sekali.
+///
+/// Jaring pengaman VR tinggal di [RemoteConfigLoader] (P0-2): loader
+/// menjamin daftar client yang dipakai selalu membawa minimal satu
+/// client bebas-script (ANDROID_VR bawaan ditambahkan bila config —
+/// remote atau cache lama — tidak membawanya). Orkestrator sendiri tetap
+/// menangani daftar tanpa client bebas-script dengan benar (mode
+/// terdegradasi + error script) bila itu pernah terjadi.
+///
 /// Rotasi client antar percobaan (P0): bila satu resolve menghabiskan
 /// semua client dan gagal, resolve BERIKUTNYA untuk lagu yang sama mulai
 /// dari client berikutnya dalam urutan fallback, bukan mengulang urutan
@@ -81,6 +95,15 @@ class StreamResolver implements AudioResolver {
   final Map<String, Future<ResolvedAudio>> _inFlight = <String, Future<ResolvedAudio>>{};
   final List<ResolveLogEntry> _log = <ResolveLogEntry>[];
 
+  /// Foto kegagalan resolve terakhir (P0-2): dibaca layar "Laporkan
+  /// kerusakan" (P6) untuk kode diagnostik. Dibersihkan saat sebuah
+  /// resolve sukses. Lihat [ResolveFailureSnapshot] untuk kontraknya.
+  ResolveFailureSnapshot? _lastFailure;
+
+  /// Foto kegagalan resolve terakhir, null bila belum pernah gagal atau
+  /// resolve terakhir sukses.
+  ResolveFailureSnapshot? get lastFailure => _lastFailure;
+
   /// Rotasi client per videoId: nama client yang harus dicoba PERTAMA
   /// pada resolve berikutnya untuk lagu itu (lihat catatan kelas).
   /// Dibatasi 50 entri; rotasi adalah best-effort, kehilangannya hanya
@@ -126,13 +149,26 @@ class StreamResolver implements AudioResolver {
 
   Future<ResolvedAudio> _resolve(String videoId, {required bool dataSaver}) async {
     final DateTime start = DateTime.now();
+    // Upaya resolve INI saja (bukan seluruh _log yang dipakai bersama
+    // resolve lain): jadi isi snapshot kegagalan terakhir (P0-2).
+    final List<ResolveLogEntry> attempts = <ResolveLogEntry>[];
     final RemotePlayerConfig config = await _configLoader.current();
     final List<ClientDefinition> clients = config.clients;
     if (clients.isEmpty) {
-      throw const ExtractorException(
+      const ExtractorException failure = ExtractorException(
         ResolveFailureCause.parseFailed,
         detail: 'config remote tidak membawa client',
       );
+      _lastFailure = ResolveFailureSnapshot(
+        videoId: videoId,
+        timestamp: DateTime.now(),
+        cause: failure.cause,
+        isNetworkError: false,
+        isTimeout: false,
+        attempts: List<ResolveLogEntry>.unmodifiable(attempts),
+        hadVisitorData: _innertube.hasVisitorData,
+      );
+      throw failure;
     }
 
     // visitorData segar menaikkan peluang lolos cek bot (bukti probe:
@@ -166,11 +202,16 @@ class StreamResolver implements AudioResolver {
         signatureTimestamp = script.signatureTimestamp;
       } on ExtractorException catch (e) {
         scriptError = e;
-        _appendLog(
-          videoId: videoId,
-          clientName: 'SCRIPT',
-          outcome: 'GAGAL ${e.cause}',
-          durationMs: DateTime.now().difference(start).inMilliseconds,
+        attempts.add(
+          _appendLog(
+            videoId: videoId,
+            clientName: 'SCRIPT',
+            outcome: 'GAGAL ${e.cause}',
+            durationMs: DateTime.now().difference(start).inMilliseconds,
+            cause: e.cause,
+            isNetworkError: e.isNetworkError,
+            isTimeout: e.isTimeout,
+          ),
         );
       }
     }
@@ -181,16 +222,23 @@ class StreamResolver implements AudioResolver {
     ExtractorException? lastError;
     ExtractorException? lastNonNetworkError;
     bool anyClientTried = false;
+    // P0-2: mode terdegradasi bisa masuk di tengah loop (lihat catatan
+    // kelas) — flag ini, bukan scriptError saja, yang menggerakkan
+    // lewati client butuh-script.
+    bool degraded = scriptError != null;
     for (final ClientDefinition client in ordered) {
-      if (scriptError != null && client.requiresScript) {
+      if (degraded && client.requiresScript) {
         // Mode terdegradasi: tanpa sts + tanpa solver, client ini tidak
         // mungkin berhasil (UNPLAYABLE dijamin + cipher tak terpecahkan).
         // Lewati tanpa membuang satu request player pun.
-        _appendLog(
-          videoId: videoId,
-          clientName: client.name,
-          outcome: 'LEWATI (butuh script)',
-          durationMs: 0,
+        attempts.add(
+          _appendLog(
+            videoId: videoId,
+            clientName: client.name,
+            outcome: 'LEWATI (butuh script)',
+            durationMs: 0,
+            skipped: true,
+          ),
         );
         continue;
       }
@@ -204,15 +252,19 @@ class StreamResolver implements AudioResolver {
           signatureTimestamp: signatureTimestamp,
           allowedHashes: allowedHashes,
         );
-        _appendLog(
-          videoId: videoId,
-          clientName: client.name,
-          outcome: 'OK itag ${result.itag}',
-          durationMs: DateTime.now().difference(clientStart).inMilliseconds,
+        attempts.add(
+          _appendLog(
+            videoId: videoId,
+            clientName: client.name,
+            outcome: 'OK itag ${result.itag}',
+            durationMs: DateTime.now().difference(clientStart).inMilliseconds,
+          ),
         );
         // Sukses: rotasi dihapus, resolve berikutnya mulai dari urutan
-        // default lagi.
+        // default lagi. Snapshot kegagalan terakhir dibersihkan: tidak
+        // ada lagi kegagalan yang belum disusul sukses (P0-2).
         _rotationStart.remove(videoId);
+        _lastFailure = null;
         return ResolvedAudio(
           videoId: result.videoId,
           url: result.url,
@@ -227,15 +279,26 @@ class StreamResolver implements AudioResolver {
       } on ExtractorException catch (e) {
         lastError = e;
         if (!e.isNetworkError) lastNonNetworkError = e;
-        _appendLog(
-          videoId: videoId,
-          clientName: client.name,
-          outcome: 'GAGAL ${e.cause}',
-          durationMs: DateTime.now().difference(clientStart).inMilliseconds,
+        attempts.add(
+          _appendLog(
+            videoId: videoId,
+            clientName: client.name,
+            outcome: 'GAGAL ${e.cause}',
+            durationMs: DateTime.now().difference(clientStart).inMilliseconds,
+            cause: e.cause,
+            isNetworkError: e.isNetworkError,
+            isTimeout: e.isTimeout,
+          ),
         );
         // Hash player tak dikenal adalah masalah script, bukan client:
-        // client lain tidak akan membantu.
-        if (e.cause == ResolveFailureCause.unknownPlayerHash) break;
+        // client butuh-script lain tidak akan membantu — tapi client
+        // bebas-script (VR) tidak butuh script sama sekali, jadi loop
+        // TIDAK berhenti: masuk mode terdegradasi dan lanjut (P0-2).
+        // Versi lama `break` di sini dan VR tidak pernah dicoba.
+        if (e.cause == ResolveFailureCause.unknownPlayerHash) {
+          degraded = true;
+          scriptError ??= e;
+        }
       }
     }
     // Semua client habis: geser rotasi supaya resolve berikutnya untuk
@@ -246,14 +309,28 @@ class StreamResolver implements AudioResolver {
     // - melemparnya menjaga klasifikasi + deteksi kanari tetap menunjuk
     // akar yang benar. Bila ada client yang dicoba, pakai aturan biasa
     // (error non-jaringan terakhir lebih informatif).
-    if (!anyClientTried && scriptError != null) throw scriptError;
-    throw lastNonNetworkError ??
-        lastError ??
-        scriptError ??
-        const ExtractorException(
-          ResolveFailureCause.emptyResponse,
-          detail: 'semua client gagal tanpa penyebab tercatat',
-        );
+    final ExtractorException failure =
+        (!anyClientTried && scriptError != null)
+        ? scriptError
+        : lastNonNetworkError ??
+              lastError ??
+              scriptError ??
+              const ExtractorException(
+                ResolveFailureCause.emptyResponse,
+                detail: 'semua client gagal tanpa penyebab tercatat',
+              );
+    // Foto kegagalan terakhir untuk kode diagnostik (P0-2): disimpan
+    // SEBELUM throw supaya "Laporkan kerusakan" (P6) bisa membacanya.
+    _lastFailure = ResolveFailureSnapshot(
+      videoId: videoId,
+      timestamp: DateTime.now(),
+      cause: failure.cause,
+      isNetworkError: failure.isNetworkError,
+      isTimeout: failure.isTimeout,
+      attempts: List<ResolveLogEntry>.unmodifiable(attempts),
+      hadVisitorData: _innertube.hasVisitorData,
+    );
+    throw failure;
   }
 
   /// Urutan client untuk resolve ini: urutan config diputar supaya client
@@ -333,6 +410,9 @@ class StreamResolver implements AudioResolver {
             ? ResolveFailureCause.httpForbidden
             : ResolveFailureCause.emptyResponse,
         clientName: client.name,
+        // Hanya Playability.error yang membuktikan lagu tidak bisa
+        // diputar (dihapus/privat/dibatasi wilayah, P6 B4.7).
+        isPlayabilityFailure: parsed.playability == Playability.error,
         detail:
             'playability ${parsed.playability}'
             '${parsed.reason != null ? ': ${parsed.reason}' : ''}',
@@ -412,21 +492,32 @@ class StreamResolver implements AudioResolver {
     );
   }
 
-  void _appendLog({
+  /// Tambah satu entri ke log resolve dan kembalikan entri itu (pemanggil
+  /// mengumpulkannya sebagai `attempts` resolve ini untuk snapshot
+  /// kegagalan terakhir). Tanpa URL.
+  ResolveLogEntry _appendLog({
     required String videoId,
     required String clientName,
     required String outcome,
     required int durationMs,
+    ResolveFailureCause? cause,
+    bool isNetworkError = false,
+    bool isTimeout = false,
+    bool skipped = false,
   }) {
-    _log.add(
-      ResolveLogEntry(
-        timestamp: DateTime.now(),
-        videoId: videoId,
-        clientName: clientName,
-        outcome: outcome,
-        durationMs: durationMs,
-      ),
+    final ResolveLogEntry entry = ResolveLogEntry(
+      timestamp: DateTime.now(),
+      videoId: videoId,
+      clientName: clientName,
+      outcome: outcome,
+      durationMs: durationMs,
+      cause: cause,
+      isNetworkError: isNetworkError,
+      isTimeout: isTimeout,
+      skipped: skipped,
     );
+    _log.add(entry);
     if (_log.length > 50) _log.removeRange(0, _log.length - 50);
+    return entry;
   }
 }

@@ -56,6 +56,7 @@ import 'package:drift/drift.dart';
 import 'package:laras/data/database.dart';
 import 'package:laras/extractor/extractor.dart';
 import 'package:laras/player/track.dart';
+import 'package:laras/resilience/connectivity.dart';
 
 import 'download_paths.dart';
 import 'download_quality.dart';
@@ -129,7 +130,7 @@ class DownloadService {
     StreamCacheService? streamCache,
     Dio? dio,
     FreeSpaceProvider? freeSpace,
-    DownloadQuality defaultQuality = DownloadQuality.best,
+    this.defaultQuality = DownloadQuality.best,
     Duration Function(int attempt)? backoffFor,
   }) : _library = library,
        _paths = paths,
@@ -137,7 +138,6 @@ class DownloadService {
        _streamCache = streamCache,
        _dio = dio ?? Dio(BaseOptions(connectTimeout: const Duration(seconds: 30))),
        _freeSpace = freeSpace ?? PlatformFreeSpaceProvider(),
-       _defaultQuality = defaultQuality,
        _backoffFor = backoffFor ?? _defaultBackoff;
 
   static Duration _defaultBackoff(int attempt) {
@@ -153,7 +153,10 @@ class DownloadService {
   final StreamCacheService? _streamCache;
   final Dio _dio;
   final FreeSpaceProvider _freeSpace;
-  final DownloadQuality _defaultQuality;
+
+  /// Kualitas default unduhan baru (diubah P6 lewat Pengaturan).
+  /// Field publik seperti [onQueueIdle]: Pengaturan menulis langsung.
+  DownloadQuality defaultQuality;
   final Duration Function(int) _backoffFor;
 
   /// Callback saat antrean kosong (dipakai cache untuk menjalankan
@@ -205,8 +208,47 @@ class DownloadService {
   /// Path direktori unduhan.
   String get downloadsDir => _paths.downloadsDir.path;
 
-  /// Kualitas default unduhan baru (diatur P6 lewat Pengaturan).
-  DownloadQuality get defaultQuality => _defaultQuality;
+  /// Gerbang WiFi (P6, B8.4): bila saklar "Unduh saat WiFi saja" aktif,
+  /// unduhan hanya berjalan saat tersambung WiFi. Dipasang lewat setter
+  /// karena gerbang dibuat sesudah layanan di main().
+  WifiGate? _wifiGate;
+  StreamSubscription<bool>? _wifiSub;
+
+  /// Gerbang WiFi (P6). Lihat [_wifiGate].
+  set wifiGate(WifiGate? gate) {
+    _wifiSub?.cancel();
+    _wifiSub = null;
+    _wifiGate = gate;
+    if (gate == null) return;
+    final WifiGate active = gate;
+    final Stream<bool>? events = active.wifiChanged;
+    if (events == null) return;
+    _wifiSub = events.listen((bool isWifi) {
+      if (_disposed) return;
+      if (isWifi) {
+        // WiFi kembali: lanjutkan antrean yang tertunda (B3.2: koneksi
+        // kembali memulai job tertunda otomatis).
+        start();
+      } else if (active.wifiOnly && _activeSongId != null) {
+        // WiFi hilang saat saklar aktif: jeda job aktif (`.part`
+        // dipertahankan, dilanjutkan saat WiFi kembali).
+        unawaited(pause(_activeSongId!));
+      }
+    });
+  }
+
+  /// Periksa ulang gerbang WiFi sekarang (dipanggil saat saklar WiFi
+  /// saja diubah di Pengaturan): jeda job aktif bila tidak boleh jalan,
+  /// atau mulai antrean bila boleh.
+  Future<void> recheckWifiGate() async {
+    final WifiGate? gate = _wifiGate;
+    if (gate == null || _disposed) return;
+    if (await gate.mayDownload) {
+      start();
+    } else if (_activeSongId != null) {
+      await pause(_activeSongId!);
+    }
+  }
 
   /// Benar bila ada unduhan yang sedang berjalan.
   bool get hasActiveJob => _activeSongId != null;
@@ -255,7 +297,7 @@ class DownloadService {
   /// aktif (dedup videoId). Job gagal yang di-enqueue ulang dilanjutkan
   /// (anggaran percobaan direset).
   Future<bool> enqueue(Track track, {DownloadQuality? quality}) async {
-    final DownloadQuality chosen = quality ?? _defaultQuality;
+    final DownloadQuality chosen = quality ?? defaultQuality;
     final SongView? existing = await _library.songById(track.videoId);
     if (existing != null &&
         existing.song.downloadState == DownloadState.downloaded) {
@@ -458,6 +500,12 @@ class DownloadService {
           onQueueIdle?.call();
           return;
         }
+        // P6 (B8.4): saklar WiFi saja aktif dan HP tidak di WiFi — job
+        // dibiarkan mengantre, pompa berhenti TANPA memanggil
+        // onQueueIdle (supaya cache juga tidak jalan di data seluler).
+        // WiFi kembali memicu start() lewat langganan wifiChanged.
+        final WifiGate? gate = _wifiGate;
+        if (gate != null && !await gate.mayDownload) return;
         try {
           await _runJob(next);
         } on Object catch (_) {
@@ -488,7 +536,7 @@ class DownloadService {
       return;
     }
     final DownloadQuality quality =
-        DownloadQuality.fromPrimaryItag(job.quality ?? -1) ?? _defaultQuality;
+        DownloadQuality.fromPrimaryItag(job.quality ?? -1) ?? defaultQuality;
     _activeSongId = songId;
     _activeCancelToken = CancelToken();
     await _library.updateDownloadJob(
@@ -961,6 +1009,8 @@ class DownloadService {
   /// `Future.delayed` nyata yang tidak pernah jalan di FakeAsync.
   Future<void> dispose() async {
     _disposed = true;
+    await _wifiSub?.cancel();
+    _wifiSub = null;
     _activeStallTimer?.cancel();
     _activeStallTimer = null;
     _activeCancelToken?.cancel('service dibuang');

@@ -48,6 +48,12 @@ abstract final class DownloadJobStatus {
 @TableIndex(name: 'songs_title_idx', columns: {#title})
 @TableIndex(name: 'songs_library_idx', columns: {#inLibrary, #dateAdded})
 @TableIndex(name: 'songs_played_idx', columns: {#inLibrary, #totalPlayTimeMs})
+/// Lagu.
+///
+/// Kolom `unplayable` (P6, B4.7): true bila lagu terbukti tidak bisa
+/// diputar dari sumber online (dihapus/privat/dibatasi wilayah, dari
+/// playabilityStatus). Lagu terunduh tidak pernah bertanda.
+@TableIndex(name: 'songs_unplayable_idx', columns: {#unplayable})
 class Songs extends Table {
   TextColumn get id => text()();
 
@@ -82,6 +88,10 @@ class Songs extends Table {
 
   TextColumn get formatId =>
       text().nullable().references(Formats, #id, onDelete: KeyAction.setNull)();
+
+  /// True bila lagu terbukti tidak bisa diputar (P6, B4.7). Default
+  /// false; dibersihkan saat satu resolve berhasil.
+  BoolColumn get unplayable => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};

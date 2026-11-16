@@ -41,6 +41,7 @@ class ExtractorException implements Exception {
     this.clientName,
     this.isNetworkError = false,
     this.isTimeout = false,
+    this.isPlayabilityFailure = false,
     this.detail,
   });
 
@@ -62,6 +63,13 @@ class ExtractorException implements Exception {
   /// bukan jaringan) TIDAK memakai flag ini.
   final bool isTimeout;
 
+  /// Benar bila playabilityStatus membuktikan lagu tidak bisa diputar
+  /// (dihapus/privat/dibatasi wilayah, P6 B4.7). Hanya disetel untuk
+  /// [Playability.error] — BUKAN untuk loginRequired (bisa jadi masalah
+  /// sesi) atau unknown. Dipakai pemutar untuk menandai lagu; kegagalan
+  /// jaringan TIDAK PERNAH memakai flag ini.
+  final bool isPlayabilityFailure;
+
   /// Detail teknis untuk log internal. Tidak pernah berisi URL stream.
   final String? detail;
 
@@ -71,6 +79,7 @@ class ExtractorException implements Exception {
     if (clientName != null) buffer.write(', client: $clientName');
     if (isNetworkError) buffer.write(', network');
     if (isTimeout) buffer.write(', timeout');
+    if (isPlayabilityFailure) buffer.write(', playability');
     if (detail != null) buffer.write(', $detail');
     buffer.write(')');
     return buffer.toString();

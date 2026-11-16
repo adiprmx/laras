@@ -1484,6 +1484,21 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
       'REFERENCES formats (id) ON DELETE SET NULL',
     ),
   );
+  static const VerificationMeta _unplayableMeta = const VerificationMeta(
+    'unplayable',
+  );
+  @override
+  late final GeneratedColumn<bool> unplayable = GeneratedColumn<bool>(
+    'unplayable',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("unplayable" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1501,6 +1516,7 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
     fileSizeBytes,
     downloadedAt,
     formatId,
+    unplayable,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1630,6 +1646,12 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
         formatId.isAcceptableOrUnknown(data['format_id']!, _formatIdMeta),
       );
     }
+    if (data.containsKey('unplayable')) {
+      context.handle(
+        _unplayableMeta,
+        unplayable.isAcceptableOrUnknown(data['unplayable']!, _unplayableMeta),
+      );
+    }
     return context;
   }
 
@@ -1699,6 +1721,10 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
         DriftSqlType.string,
         data['${effectivePrefix}format_id'],
       ),
+      unplayable: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}unplayable'],
+      )!,
     );
   }
 
@@ -1726,6 +1752,10 @@ class Song extends DataClass implements Insertable<Song> {
   final int? fileSizeBytes;
   final DateTime? downloadedAt;
   final String? formatId;
+
+  /// True bila lagu terbukti tidak bisa diputar (P6, B4.7). Default
+  /// false; dibersihkan saat satu resolve berhasil.
+  final bool unplayable;
   const Song({
     required this.id,
     required this.title,
@@ -1742,6 +1772,7 @@ class Song extends DataClass implements Insertable<Song> {
     this.fileSizeBytes,
     this.downloadedAt,
     this.formatId,
+    required this.unplayable,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1775,6 +1806,7 @@ class Song extends DataClass implements Insertable<Song> {
     if (!nullToAbsent || formatId != null) {
       map['format_id'] = Variable<String>(formatId);
     }
+    map['unplayable'] = Variable<bool>(unplayable);
     return map;
   }
 
@@ -1809,6 +1841,7 @@ class Song extends DataClass implements Insertable<Song> {
       formatId: formatId == null && nullToAbsent
           ? const Value.absent()
           : Value(formatId),
+      unplayable: Value(unplayable),
     );
   }
 
@@ -1833,6 +1866,7 @@ class Song extends DataClass implements Insertable<Song> {
       fileSizeBytes: serializer.fromJson<int?>(json['fileSizeBytes']),
       downloadedAt: serializer.fromJson<DateTime?>(json['downloadedAt']),
       formatId: serializer.fromJson<String?>(json['formatId']),
+      unplayable: serializer.fromJson<bool>(json['unplayable']),
     );
   }
   @override
@@ -1854,6 +1888,7 @@ class Song extends DataClass implements Insertable<Song> {
       'fileSizeBytes': serializer.toJson<int?>(fileSizeBytes),
       'downloadedAt': serializer.toJson<DateTime?>(downloadedAt),
       'formatId': serializer.toJson<String?>(formatId),
+      'unplayable': serializer.toJson<bool>(unplayable),
     };
   }
 
@@ -1873,6 +1908,7 @@ class Song extends DataClass implements Insertable<Song> {
     Value<int?> fileSizeBytes = const Value.absent(),
     Value<DateTime?> downloadedAt = const Value.absent(),
     Value<String?> formatId = const Value.absent(),
+    bool? unplayable,
   }) => Song(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -1893,6 +1929,7 @@ class Song extends DataClass implements Insertable<Song> {
         : this.fileSizeBytes,
     downloadedAt: downloadedAt.present ? downloadedAt.value : this.downloadedAt,
     formatId: formatId.present ? formatId.value : this.formatId,
+    unplayable: unplayable ?? this.unplayable,
   );
   Song copyWithCompanion(SongsCompanion data) {
     return Song(
@@ -1925,6 +1962,9 @@ class Song extends DataClass implements Insertable<Song> {
           ? data.downloadedAt.value
           : this.downloadedAt,
       formatId: data.formatId.present ? data.formatId.value : this.formatId,
+      unplayable: data.unplayable.present
+          ? data.unplayable.value
+          : this.unplayable,
     );
   }
 
@@ -1945,7 +1985,8 @@ class Song extends DataClass implements Insertable<Song> {
           ..write('filePath: $filePath, ')
           ..write('fileSizeBytes: $fileSizeBytes, ')
           ..write('downloadedAt: $downloadedAt, ')
-          ..write('formatId: $formatId')
+          ..write('formatId: $formatId, ')
+          ..write('unplayable: $unplayable')
           ..write(')'))
         .toString();
   }
@@ -1967,6 +2008,7 @@ class Song extends DataClass implements Insertable<Song> {
     fileSizeBytes,
     downloadedAt,
     formatId,
+    unplayable,
   );
   @override
   bool operator ==(Object other) =>
@@ -1986,7 +2028,8 @@ class Song extends DataClass implements Insertable<Song> {
           other.filePath == this.filePath &&
           other.fileSizeBytes == this.fileSizeBytes &&
           other.downloadedAt == this.downloadedAt &&
-          other.formatId == this.formatId);
+          other.formatId == this.formatId &&
+          other.unplayable == this.unplayable);
 }
 
 class SongsCompanion extends UpdateCompanion<Song> {
@@ -2005,6 +2048,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
   final Value<int?> fileSizeBytes;
   final Value<DateTime?> downloadedAt;
   final Value<String?> formatId;
+  final Value<bool> unplayable;
   final Value<int> rowid;
   const SongsCompanion({
     this.id = const Value.absent(),
@@ -2022,6 +2066,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
     this.fileSizeBytes = const Value.absent(),
     this.downloadedAt = const Value.absent(),
     this.formatId = const Value.absent(),
+    this.unplayable = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SongsCompanion.insert({
@@ -2040,6 +2085,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
     this.fileSizeBytes = const Value.absent(),
     this.downloadedAt = const Value.absent(),
     this.formatId = const Value.absent(),
+    this.unplayable = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        title = Value(title),
@@ -2061,6 +2107,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
     Expression<int>? fileSizeBytes,
     Expression<DateTime>? downloadedAt,
     Expression<String>? formatId,
+    Expression<bool>? unplayable,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2079,6 +2126,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
       if (fileSizeBytes != null) 'file_size_bytes': fileSizeBytes,
       if (downloadedAt != null) 'downloaded_at': downloadedAt,
       if (formatId != null) 'format_id': formatId,
+      if (unplayable != null) 'unplayable': unplayable,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2099,6 +2147,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
     Value<int?>? fileSizeBytes,
     Value<DateTime?>? downloadedAt,
     Value<String?>? formatId,
+    Value<bool>? unplayable,
     Value<int>? rowid,
   }) {
     return SongsCompanion(
@@ -2117,6 +2166,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
       fileSizeBytes: fileSizeBytes ?? this.fileSizeBytes,
       downloadedAt: downloadedAt ?? this.downloadedAt,
       formatId: formatId ?? this.formatId,
+      unplayable: unplayable ?? this.unplayable,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2169,6 +2219,9 @@ class SongsCompanion extends UpdateCompanion<Song> {
     if (formatId.present) {
       map['format_id'] = Variable<String>(formatId.value);
     }
+    if (unplayable.present) {
+      map['unplayable'] = Variable<bool>(unplayable.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2193,6 +2246,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
           ..write('fileSizeBytes: $fileSizeBytes, ')
           ..write('downloadedAt: $downloadedAt, ')
           ..write('formatId: $formatId, ')
+          ..write('unplayable: $unplayable, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -6412,6 +6466,10 @@ abstract class _$LarasDatabase extends GeneratedDatabase {
     'songs_played_idx',
     'CREATE INDEX songs_played_idx ON songs (in_library, total_play_time_ms)',
   );
+  late final Index songsUnplayableIdx = Index(
+    'songs_unplayable_idx',
+    'CREATE INDEX songs_unplayable_idx ON songs (unplayable)',
+  );
   late final Index albumsTitleIdx = Index(
     'albums_title_idx',
     'CREATE INDEX albums_title_idx ON albums (title)',
@@ -6472,6 +6530,7 @@ abstract class _$LarasDatabase extends GeneratedDatabase {
     songsTitleIdx,
     songsLibraryIdx,
     songsPlayedIdx,
+    songsUnplayableIdx,
     albumsTitleIdx,
     artistsNameIdx,
     songArtistsArtistIdx,

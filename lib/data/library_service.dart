@@ -1842,6 +1842,9 @@ class LibraryService {
         downloadedAt: Value<DateTime?>(DateTime.now()),
         formatId: Value<String?>(formatId),
         inLibrary: const Value<bool>(true),
+        // Unduhan berhasil = resolve berhasil: bersihkan tanda
+        // "tidak bisa diputar" bila ada (B4.7).
+        unplayable: const Value<bool>(false),
         dateModified: Value<DateTime>(DateTime.now()),
       ),
     );
@@ -1871,6 +1874,102 @@ class LibraryService {
         dateModified: Value<DateTime>(DateTime.now()),
       ),
     );
+  }
+
+  /// Apakah lagu sudah terunduh (file lokal tersedia).
+  Future<bool> isDownloaded(String songId) async {
+    final Song? song = await (db.select(
+      db.songs,
+    )..where((Songs s) => s.id.equals(songId))).getSingleOrNull();
+    return song != null &&
+        song.downloadState == DownloadState.downloaded &&
+        song.filePath != null;
+  }
+
+  // ------------------------------------------------------------------
+  // Lagu yang tidak bisa diputar (P6, B4.7)
+  // ------------------------------------------------------------------
+
+  /// Tandai lagu sebagai tidak bisa diputar.
+  ///
+  /// Dipanggil HANYA saat playabilityStatus membuktikan lagu dihapus /
+  /// privat / dibatasi wilayah — bukan saat gagal jaringan (penjaga ada
+  /// di pemutar + [LibraryUnplayableMarker]).
+  Future<void> markUnplayable(String songId) async {
+    await (db.update(db.songs)
+          ..where(
+            (Songs s) => s.id.equals(songId) & s.unplayable.equals(false),
+          ))
+        .write(
+          SongsCompanion(
+            unplayable: const Value<bool>(true),
+            dateModified: Value<DateTime>(DateTime.now()),
+          ),
+        );
+  }
+
+  /// Bersihkan tanda "tidak bisa diputar" (satu resolve berhasil).
+  Future<void> clearUnplayable(String songId) async {
+    await (db.update(db.songs)
+          ..where(
+            (Songs s) => s.id.equals(songId) & s.unplayable.equals(true),
+          ))
+        .write(
+          SongsCompanion(
+            unplayable: const Value<bool>(false),
+            dateModified: Value<DateTime>(DateTime.now()),
+          ),
+        );
+  }
+
+  /// Apakah lagu sedang bertanda tidak bisa diputar.
+  Future<bool> isUnplayable(String songId) async {
+    final Song? song = await (db.select(
+      db.songs,
+    )..where((Songs s) => s.id.equals(songId))).getSingleOrNull();
+    return song?.unplayable ?? false;
+  }
+
+  /// Jumlah lagu bertanda yang BUKAN unduhan (yang bisa dihapus massal).
+  Future<int> unplayableCount() async {
+    final List<Song> rows = await (db.select(db.songs)
+          ..where(
+            (Songs s) =>
+                s.unplayable.equals(true) &
+                s.downloadState.equals(DownloadState.downloaded).not(),
+          ))
+        .get();
+    return rows.length;
+  }
+
+  /// Hapus massal lagu bertanda yang bukan unduhan.
+  ///
+  /// Menghapus baris lagu + entri playlist + entri FTS dalam satu
+  /// transaksi (foreign key cascade menangani tabel anak lain).
+  /// Mengembalikan jumlah lagu yang dihapus.
+  Future<int> deleteUnplayableSongs() async {
+    final List<Song> rows = await (db.select(db.songs)
+          ..where(
+            (Songs s) =>
+                s.unplayable.equals(true) &
+                s.downloadState.equals(DownloadState.downloaded).not(),
+          ))
+        .get();
+    if (rows.isEmpty) return 0;
+    final List<String> ids = rows.map((Song s) => s.id).toList();
+    await db.transaction(() async {
+      for (final String id in ids) {
+        await (db.delete(
+          db.playlistSongs,
+        )..where((PlaylistSongs p) => p.songId.equals(id))).go();
+        await (db.delete(db.librarySearch)..where(
+              (LibrarySearch f) => f.kind.equals('song') & f.refId.equals(id),
+            ))
+            .go();
+        await (db.delete(db.songs)..where((Songs s) => s.id.equals(id))).go();
+      }
+    });
+    return ids.length;
   }
 
   /// Simpan metadata format audio (itag, mime, bitrate) bila belum ada.

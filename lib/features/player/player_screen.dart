@@ -1,21 +1,30 @@
+/// Layar Player penuh (Rombak UI-2): sampul besar berbayang, judul
+/// rata kiri dengan hati + unduh di kanan, pencari waktu, tombol
+/// putar 72 dp, acak/ulangi dengan titik status, pengaturan suara,
+/// dan antrean sebagai baris lagu (SongRow — sampul + judul + artis
+/// + durasi + penanda lagu yang sedang berbunyi).
+///
+/// Satu-satunya sumber state adalah [AudioPlayerPort] yang disuntik.
+/// Layar ini tidak menyimpan state pemutaran sendiri — hanya nilai drag
+/// slider selama jari menyentuh slider.
+library;
+
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:laras/core/theme/app_colors.dart';
 import 'package:laras/core/theme/app_theme.dart';
 import 'package:laras/core/widgets/album_cover.dart';
+import 'package:laras/core/widgets/section_header.dart';
 import 'package:laras/data/database.dart';
 import 'package:laras/features/downloads/download_button.dart';
+import 'package:laras/features/library/song_row.dart';
 import 'package:laras/features/player/playback_error_banner.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/player/audio_player_port.dart';
 import 'package:laras/player/player_state.dart';
 import 'package:laras/player/track.dart';
+import 'package:laras/resilience/check_updates_action.dart';
+import 'package:laras/resilience/resilience_scope.dart';
 
-/// Layar Player penuh: sampul, judul, pencari waktu, tombol putar,
-/// acak, ulangi, pengaturan suara, dan antrean.
-///
-/// Satu-satunya sumber state adalah [AudioPlayerPort] yang disuntik.
-/// Layar ini tidak menyimpan state pemutaran sendiri — hanya nilai drag
-/// slider selama jari menyentuh slider.
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({super.key, required this.port});
 
@@ -69,12 +78,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final Duration duration = snap.duration ?? track?.duration ?? Duration.zero;
         final bool hasDuration = duration.inMilliseconds > 0;
         return Scaffold(
-          appBar: AppBar(title: Text(strings.nowPlaying)),
+          appBar: AppBar(
+            title: Text(strings.nowPlaying),
+            centerTitle: true,
+            // Panah bawah (bukan panah kembali): konvensi layar pemutar —
+            // layar ini menutup ke bawah, kembali ke mini-player.
+            leading: IconButton(
+              icon: const Icon(Icons.keyboard_arrow_down),
+              tooltip: strings.close,
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+          ),
           body: track == null
               ? Center(
-                  child: Text(
-                    strings.queueEmpty,
-                    style: theme.textTheme.bodyMedium,
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.xl),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Icon(
+                          Icons.music_note_outlined,
+                          size: 48,
+                          color: AppColors.textMuted,
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          strings.queueEmpty,
+                          style: theme.textTheme.bodyMedium,
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
                   ),
                 )
               : StreamBuilder<Duration>(
@@ -102,6 +136,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               PlaybackErrorBanner(
                                 failure: snap.lastError!,
                                 onRetry: () => widget.port.play(),
+                                onCheckUpdates:
+                                    ResilienceScope.serviceStatusOf(context) ==
+                                        null
+                                    ? null
+                                    : () => runCheckForUpdates(
+                                        context,
+                                        ResilienceScope.serviceStatusOf(
+                                          context,
+                                        )!,
+                                      ),
                               ),
                             if (snap.reResolving)
                               Padding(
@@ -127,25 +171,59 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                   ],
                                 ),
                               ),
-                            _Cover(artUri: track.artUri),
-                            const SizedBox(height: AppSpacing.md),
-                            Text(
-                              track.title,
-                              style: theme.textTheme.titleLarge,
-                              textAlign: TextAlign.center,
-                            ),
-                            if (track.artist != null) ...<Widget>[
-                              const SizedBox(height: AppSpacing.xs),
-                              Text(
-                                track.artist!,
-                                style: theme.textTheme.bodyMedium,
-                                textAlign: TextAlign.center,
+                            // Sampul berganti dengan fade + skala kecil
+                            // bila lagu berubah (kunci = videoId).
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 250),
+                              transitionBuilder:
+                                  (Widget child, Animation<double> animation) {
+                                    return FadeTransition(
+                                      opacity: animation,
+                                      child: ScaleTransition(
+                                        scale: Tween<double>(
+                                          begin: 0.96,
+                                          end: 1.0,
+                                        ).animate(animation),
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                              child: _Cover(
+                                key: ValueKey<String>(track.videoId),
+                                artUri: track.artUri,
                               ),
-                            ],
-                            const SizedBox(height: AppSpacing.xs),
+                            ),
+                            const SizedBox(height: AppSpacing.lg),
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: <Widget>[
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Text(
+                                        track.title,
+                                        style: theme.textTheme.titleLarge,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (track.artist != null) ...<Widget>[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          track.artist!,
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                                color:
+                                                    AppColors.textSecondary,
+                                              ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
                                 _FavoriteHeart(track: track),
                                 DownloadButton(track: track),
                               ],
@@ -159,7 +237,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                       milliseconds: sliderValue.round(),
                                     ),
                                   ),
-                                  style: theme.textTheme.bodySmall,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontFeatures: const <FontFeature>[
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
                                 ),
                                 Expanded(
                                   child: Slider(
@@ -188,22 +270,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 ),
                                 Text(
                                   _format(duration),
-                                  style: theme.textTheme.bodySmall,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontFeatures: const <FontFeature>[
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                    color: AppColors.textMuted,
+                                  ),
                                 ),
                               ],
                             ),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: <Widget>[
-                                IconButton(
+                                _ModeButton(
+                                  active: snap.shuffleEnabled,
+                                  icon: Icons.shuffle,
+                                  tooltip: strings.shuffle,
                                   onPressed: () => widget.port.setShuffle(
                                     !snap.shuffleEnabled,
                                   ),
-                                  tooltip: strings.shuffle,
-                                  color: snap.shuffleEnabled
-                                      ? AppColors.accent
-                                      : AppColors.textMuted,
-                                  icon: const Icon(Icons.shuffle),
                                 ),
                                 IconButton(
                                   onPressed: () =>
@@ -232,11 +317,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                             shape: const CircleBorder(),
                                             padding: EdgeInsets.zero,
                                           ),
-                                          child: Icon(
-                                            snap.playing
-                                                ? Icons.pause
-                                                : Icons.play_arrow,
-                                            size: 36,
+                                          child: AnimatedSwitcher(
+                                            duration: const Duration(
+                                              milliseconds: 150,
+                                            ),
+                                            child: Icon(
+                                              snap.playing
+                                                  ? Icons.pause
+                                                  : Icons.play_arrow,
+                                              key: ValueKey<bool>(
+                                                snap.playing,
+                                              ),
+                                              size: 36,
+                                            ),
                                           ),
                                         ),
                                 ),
@@ -247,7 +340,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                   icon: const Icon(Icons.skip_next),
                                   iconSize: 36,
                                 ),
-                                IconButton(
+                                _ModeButton(
+                                  active: snap.repeatMode != RepeatMode.off,
+                                  icon: snap.repeatMode == RepeatMode.one
+                                      ? Icons.repeat_one
+                                      : Icons.repeat,
+                                  tooltip: switch (snap.repeatMode) {
+                                    RepeatMode.off => strings.repeatOff,
+                                    RepeatMode.all => strings.repeatAll,
+                                    RepeatMode.one => strings.repeatOne,
+                                  },
                                   onPressed: () {
                                     final RepeatMode next = switch (snap
                                         .repeatMode) {
@@ -257,19 +359,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                     };
                                     widget.port.setRepeatMode(next);
                                   },
-                                  tooltip: switch (snap.repeatMode) {
-                                    RepeatMode.off => strings.repeatOff,
-                                    RepeatMode.all => strings.repeatAll,
-                                    RepeatMode.one => strings.repeatOne,
-                                  },
-                                  color: snap.repeatMode == RepeatMode.off
-                                      ? AppColors.textMuted
-                                      : AppColors.accent,
-                                  icon: Icon(
-                                    snap.repeatMode == RepeatMode.one
-                                        ? Icons.repeat_one
-                                        : Icons.repeat,
-                                  ),
                                 ),
                               ],
                             ),
@@ -282,43 +371,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               ),
                             ),
                             const SizedBox(height: AppSpacing.md),
-                            Text(
-                              strings.queue,
-                              style: theme.textTheme.titleMedium,
-                            ),
+                            SectionHeader(title: strings.queue),
                             const SizedBox(height: AppSpacing.sm),
                             ...snap.queue.asMap().entries.map((entry) {
                               final int index = entry.key;
                               final Track item = entry.value;
                               final bool isCurrent =
                                   index == snap.currentIndex;
-                              return ListTile(
-                                leading: isCurrent
-                                    ? const Icon(
-                                        Icons.equalizer,
-                                        color: AppColors.accent,
-                                      )
-                                    : Text('${index + 1}'),
-                                title: Text(
-                                  item.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: isCurrent
-                                      ? theme.textTheme.titleSmall?.copyWith(
-                                          color: AppColors.accent,
-                                        )
-                                      : theme.textTheme.titleSmall,
-                                ),
-                                subtitle: item.artist == null
-                                    ? null
-                                    : Text(
-                                        item.artist!,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                trailing: item.duration == null
-                                    ? null
-                                    : Text(_format(item.duration!)),
+                              return SongRow(
+                                title: item.title,
+                                subtitle: item.artist,
+                                artUri: item.artUri,
+                                duration: item.duration,
+                                isCurrent: isCurrent,
+                                isPlaying: isCurrent && snap.playing,
+                                // Sengaja false: spinner muat hanya ada
+                                // di tombol putar utama — tes loading
+                                // mengharapkan tepat satu spinner.
+                                isBusy: false,
                                 onTap: () =>
                                     widget.port.skipToIndex(index),
                               );
@@ -333,31 +403,84 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 }
 
+/// Tombol mode (acak / ulangi): ikon + titik putih 4 dp di bawahnya
+/// saat mode aktif. Titik menandai state nyata, bukan dekorasi.
+class _ModeButton extends StatelessWidget {
+  const _ModeButton({
+    required this.active,
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final bool active;
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        IconButton(
+          onPressed: onPressed,
+          tooltip: tooltip,
+          color: active ? AppColors.accent : AppColors.textMuted,
+          icon: Icon(icon),
+        ),
+        Container(
+          width: 4,
+          height: 4,
+          decoration: BoxDecoration(
+            color: active ? AppColors.accent : Colors.transparent,
+            shape: BoxShape.circle,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Sampul persegi layar penuh: radius 16 + bayangan lembut supaya
+/// sampul terasa mengangkat dari kanvas hitam.
 class _Cover extends StatelessWidget {
-  const _Cover({this.artUri});
+  const _Cover({super.key, this.artUri});
 
   final Uri? artUri;
 
   @override
   Widget build(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: 1,
-      child: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) {
-          return AlbumCover(
-            artUri: artUri,
-            size: constraints.maxWidth,
-            radius: AppRadius.card,
-            iconSize: 96,
-            memCacheWidth: 720,
-          );
-        },
+    return Container(
+      decoration: const BoxDecoration(
+        borderRadius: BorderRadius.all(Radius.circular(AppRadius.heroCard)),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Color(0x66000000),
+            blurRadius: 24,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: AspectRatio(
+        aspectRatio: 1,
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) {
+            return AlbumCover(
+              artUri: artUri,
+              size: constraints.maxWidth,
+              radius: AppRadius.heroCard,
+              iconSize: 96,
+              memCacheWidth: 720,
+            );
+          },
+        ),
       ),
     );
   }
 }
 
-/// Tombol hati di bawah judul: menandai lagu yang sedang diputar
+/// Tombol hati di kanan judul: menandai lagu yang sedang diputar
 /// sebagai favorit (dan otomatis masuk Library).
 ///
 /// Sembunyi total bila tidak ada LibraryService di atasnya (tes tanpa

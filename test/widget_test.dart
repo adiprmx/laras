@@ -3,12 +3,25 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:laras/core/theme/app_theme.dart';
 import 'package:laras/features/home/home_screen.dart';
+import 'package:laras/features/onboarding/onboarding_flow.dart';
 import 'package:laras/features/player/mini_player.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/main.dart';
 import 'package:laras/player/player.dart';
+import 'package:laras/resilience/honesty_sheet.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    // Semua tes di file ini memompa LarasApp/HomeShell: matikan urutan
+    // first-run (pengenalan + lembar kejujuran) supaya beranda langsung
+    // terlihat. Urutan first-run diuji tersendiri di first_run_test.dart.
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      kOnboardingShownKey: true,
+      kHonestySheetShownKey: true,
+    });
+  });
+
   testWidgets('Laras renders four tabs with the dark theme', (
     WidgetTester tester,
   ) async {
@@ -80,9 +93,15 @@ void main() {
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
 
     // Ikon gerigi membuka layar Pengaturan, dan kembali menutupnya.
+    // Tanpa scope layanan (tes ini memompa LarasApp kosong), Pengaturan
+    // hanya menampilkan kelompok App (Tentang + FAQ); kelompok yang
+    // butuh layanan disembunyikan, bukan tombol mati (P6).
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
-    expect(find.text(strings.settingsComingSoon), findsOneWidget);
+    expect(find.text(strings.aboutLicenses), findsOneWidget);
+    expect(find.text(strings.faqTitle), findsOneWidget);
+    expect(find.text(strings.playbackSettings), findsNothing);
+    expect(find.text(strings.settingsServiceGroup), findsNothing);
     // pageBack() mencari tombol kembali Cupertino di platform tertentu;
     // app ini Material, jadi ketuk BackButton Material secara langsung.
     await tester.tap(find.byType(BackButton));

@@ -2,6 +2,10 @@
     xmlns:tools="http://schemas.android.com/tools">
     <!-- Izin minimal v1 (PRD bagian 12). Izin baru butuh alasan tertulis. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- P6: deteksi WiFi untuk sakelar "Unduh saat WiFi saja" (B8.4).
+         Tanpa izin ini ConnectivityManager tidak bisa membaca status
+         jaringan. Izin normal (tanpa dialog), tanpa akses lokasi. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -70,6 +74,18 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- P6: tanpa deklarasi ini, resolveActivity() untuk email dan
+             browser mengembalikan null di Android 11+ (package visibility)
+             walau aplikasinya ada — laporan kerusakan dan tautan repo
+             akan selalu gagal. -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <data android:scheme="mailto"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
         </intent>
     </queries>
 </manifest>

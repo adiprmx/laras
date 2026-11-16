@@ -1,11 +1,4 @@
-import 'package:flutter/material.dart';
-import 'package:laras/core/theme/app_colors.dart';
-import 'package:laras/core/theme/app_theme.dart';
-import 'package:laras/core/widgets/album_cover.dart';
-import 'package:laras/l10n/generated/app_localizations.dart';
-import 'package:laras/player/player.dart';
-
-/// Mini-player 64 dp yang mengambang di atas tab bawah.
+/// Mini-player 64 dp yang mengambang di atas tab bawah (Rombak UI-2).
 ///
 /// Hanya tampil bila ada lagu yang sedang diputar atau dijeda. Tidak bisa
 /// dihapus dengan geser ke samping. Ketuk sampul atau teks membuka Player
@@ -13,12 +6,28 @@ import 'package:laras/player/player.dart';
 /// tanpa membuka Player. Garis tipis di tepi bawah menunjukkan progres
 /// lagu (kosong bila durasi belum diketahui).
 ///
+/// Tombol putar berupa lingkaran putih (aksen) dengan ikon hitam —
+/// titik aksi utama yang terlihat sekilas; ikon putar/jeda/ulangi
+/// berganti dengan crossfade, judul berganti dengan crossfade bila
+/// lagu berubah. Bayangan lembut + garis tipis menandai mini-player
+/// melayang di atas konten (R-12: motif naik hanya di permukaan yang
+/// benar-benar melayang).
+///
 /// State error (P0): bila [failure] tidak null, baris artis diganti pesan
 /// singkat sesuai penyebab ("Tidak ada internet" / "Internet lambat" /
 /// "Tidak bisa diputar") dan tombol putar berubah menjadi tombol coba lagi
 /// (ikon segar, label "Coba lagi"). Tanpa ini, lagu yang gagal putar tampil
 /// persis seperti lagu yang dijeda - pengguna tidak tahu ada masalah dan
 /// tidak tahu harus apa (insiden P0 16 Nov 2026).
+library;
+
+import 'package:flutter/material.dart';
+import 'package:laras/core/theme/app_colors.dart';
+import 'package:laras/core/theme/app_theme.dart';
+import 'package:laras/core/widgets/album_cover.dart';
+import 'package:laras/l10n/generated/app_localizations.dart';
+import 'package:laras/player/player.dart';
+
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({
     super.key,
@@ -89,9 +98,19 @@ class MiniPlayer extends StatelessWidget {
       child: Container(
         key: const Key('mini-player'),
         height: AppSizes.miniPlayer,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.elevated,
-          borderRadius: BorderRadius.all(Radius.circular(AppRadius.card)),
+          borderRadius: const BorderRadius.all(
+            Radius.circular(AppRadius.card),
+          ),
+          border: Border.all(color: AppColors.hairline),
+          boxShadow: const <BoxShadow>[
+            BoxShadow(
+              color: Color(0x66000000),
+              blurRadius: 12,
+              offset: Offset(0, -2),
+            ),
+          ],
         ),
         child: ClipRRect(
           borderRadius: const BorderRadius.all(
@@ -113,6 +132,7 @@ class MiniPlayer extends StatelessWidget {
                           AlbumCover(
                             artUri: artUri,
                             size: AppSizes.touchTarget,
+                            radius: 8,
                           ),
                           const SizedBox(width: AppSpacing.sm),
                           Expanded(
@@ -120,11 +140,15 @@ class MiniPlayer extends StatelessWidget {
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: <Widget>[
-                                Text(
-                                  title,
-                                  style: theme.textTheme.titleSmall,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 200),
+                                  child: Text(
+                                    title,
+                                    key: ValueKey<String>(title),
+                                    style: theme.textTheme.titleSmall,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                                 if (failure != null)
                                   Row(
@@ -185,19 +209,33 @@ class MiniPlayer extends StatelessWidget {
                     tooltip: strings.previousSong,
                     icon: const Icon(Icons.skip_previous),
                   ),
-                  IconButton(
+                  IconButton.filled(
                     onPressed: onPlayPause,
                     tooltip: failure != null
                         ? strings.retry
                         : isPlaying
                         ? strings.pause
                         : strings.play,
-                    icon: Icon(
-                      failure != null
-                          ? Icons.refresh
-                          : isPlaying
-                          ? Icons.pause
-                          : Icons.play_arrow,
+                    style: IconButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: AppColors.textOnAccent,
+                    ),
+                    icon: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 150),
+                      child: Icon(
+                        failure != null
+                            ? Icons.refresh
+                            : isPlaying
+                            ? Icons.pause
+                            : Icons.play_arrow,
+                        key: ValueKey<String>(
+                          failure != null
+                              ? 'refresh'
+                              : isPlaying
+                              ? 'pause'
+                              : 'play',
+                        ),
+                      ),
                     ),
                   ),
                   IconButton(
@@ -212,7 +250,7 @@ class MiniPlayer extends StatelessWidget {
                 right: 0,
                 bottom: 0,
                 child: SizedBox(
-                  height: 2,
+                  height: 3,
                   child: LinearProgressIndicator(
                     value: progress,
                     backgroundColor: AppColors.pressed,

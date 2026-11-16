@@ -5,6 +5,8 @@
 /// sini tidak mencetak URL di [toString].
 library;
 
+import 'errors.dart';
+
 /// Batas jumlah item per kelompok hasil parse (rencana §3.3: 100 item
 /// per halaman; halaman playlist YouTube sendiri berukuran 100 item,
 /// jadi cap ini tidak memotong hasil yang sah). Mencegah satu respons
@@ -165,18 +167,114 @@ class ResolveLogEntry {
     required this.clientName,
     required this.outcome,
     required this.durationMs,
+    this.cause,
+    this.isNetworkError = false,
+    this.isTimeout = false,
+    this.skipped = false,
   });
 
   final DateTime timestamp;
   final String videoId;
   final String clientName;
+
+  /// Hasil dibaca manusia, mis. 'OK itag 251', 'GAGAL httpForbidden',
+  /// 'LEWATI (butuh script)'. Untuk diagnosis mesin pakai [cause] +
+  /// [skipped], bukan parse string ini.
   final String outcome;
   final int durationMs;
+
+  /// Penyebab kegagalan terstruktur (P0-2), null bila upaya ini sukses
+  /// atau dilewati. Diisi dari [ExtractorException.cause] upaya itu.
+  final ResolveFailureCause? cause;
+
+  /// Benar bila kegagalan ini berasal dari jaringan perangkat.
+  final bool isNetworkError;
+
+  /// Benar bila kegagalan ini adalah timeout.
+  final bool isTimeout;
+
+  /// Benar bila client ini DILEWATI tanpa request player (mode
+  /// terdegradasi: butuh script padahal script gagal dimuat).
+  final bool skipped;
 
   @override
   String toString() =>
       '${timestamp.toIso8601String()} $videoId [$clientName] '
       '$outcome ${durationMs}ms';
+}
+
+/// Foto kegagalan resolve terakhir (P0-2, tindak lanjut gejala
+/// "coba lagi mulu" 16 Nov 2026 18:56 WIB).
+///
+/// Dipakai layar "Laporkan kerusakan" (P6, B11.4) sebagai data kode
+/// diagnostik: jenis gagal + penyebab + waktu + client yang dicoba.
+/// TIDAK berisi URL stream, judul lagu, atau data pribadi — [videoId]
+/// hanya dipakai internal (pencocokan dengan log) dan TIDAK masuk
+/// [diagnosticCode].
+///
+/// Kontrak antar tim: P6 membaca snapshot ini dari resolver pemutar
+/// ([StreamResolver.lastFailure]; bila resolver bukan StreamResolver,
+/// turun ke [AudioResolver.recentLog] dan ambil entri resolve terakhir
+/// dari entri dengan timestamp terbaru). Snapshot dibersihkan (null)
+/// saat sebuah resolve sukses — yang tersimpan selalu kegagalan
+/// TERAKHIR yang belum disusul sukses.
+class ResolveFailureSnapshot {
+  const ResolveFailureSnapshot({
+    required this.videoId,
+    required this.timestamp,
+    required this.cause,
+    required this.isNetworkError,
+    required this.isTimeout,
+    required this.attempts,
+    required this.hadVisitorData,
+  });
+
+  /// videoId lagu yang gagal di-resolve (internal saja, tidak masuk kode).
+  final String videoId;
+
+  /// Waktu kegagalan terjadi.
+  final DateTime timestamp;
+
+  /// Penyebab akhir yang dilempar ke pemutar (aturan "paling informatif"
+  /// orkestrator: non-jaringan didahulukan).
+  final ResolveFailureCause cause;
+
+  /// Benar bila penyebab akhir adalah jaringan perangkat.
+  final bool isNetworkError;
+
+  /// Benar bila penyebab akhir adalah timeout.
+  final bool isTimeout;
+
+  /// Upaya per client dalam resolve yang gagal ini, sesuai urutan
+  /// dicoba — termasuk entri SCRIPT dan yang dilewati. Tanpa URL.
+  final List<ResolveLogEntry> attempts;
+
+  /// Benar bila visitorData tersedia saat resolve gagal. Palsu berarti
+  /// search visitorData gagal total — petunjuk IP perangkat kena cek bot
+  /// sejak awal (semua client LOGIN_REQUIRED tanpa visitorData saat
+  /// reputasi IP rendah, bukti P1).
+  final bool hadVisitorData;
+
+  /// Kode diagnostik ringkas untuk laporan kerusakan, mis.
+  /// `R1/httpForbidden/WEB_REMIX:httpForbidden/MWEB:httpForbidden/
+  /// ANDROID_VR:httpForbidden`. Stabil antar versi (bagian dep `R1`
+  /// adalah versi format kode). Tanpa videoId, judul, dan URL.
+  String get diagnosticCode {
+    final StringBuffer code = StringBuffer('R1/${cause.name}');
+    if (isTimeout) code.write('/TIMEOUT');
+    if (!hadVisitorData) code.write('/NOVD');
+    for (final ResolveLogEntry attempt in attempts) {
+      code.write('/${attempt.clientName}:');
+      if (attempt.skipped) {
+        code.write('SKIP');
+      } else if (attempt.cause != null) {
+        code.write(attempt.cause!.name);
+      } else {
+        code.write('OK');
+      }
+    }
+    return code.toString();
+  }
 }
 
 /// Satu hasil pencarian lagu dari YouTube Music.

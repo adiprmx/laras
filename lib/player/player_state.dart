@@ -7,6 +7,8 @@ library;
 
 import 'package:flutter/foundation.dart';
 
+import 'package:laras/extractor/errors.dart';
+
 import 'track.dart';
 
 /// Mode pengulangan antrean.
@@ -67,6 +69,7 @@ class PlaybackFailure {
     required this.kind,
     required this.trackTitle,
     this.skippedCount = 0,
+    this.cause,
   });
 
   final PlaybackFailureKind kind;
@@ -78,20 +81,26 @@ class PlaybackFailure {
   /// sebelum lagu yang berhasil. Nol bila tidak ada yang dilewati.
   final int skippedCount;
 
+  /// Penyebab resolve (P6): bila [kind] adalah unplayable dan penyebab
+  /// diketahui, pesan banner memakai pemetaan penyebab ini (bukan pesan
+  /// generik). Null untuk kegagalan non-resolve (mis. error engine).
+  final ResolveFailureCause? cause;
+
   @override
   bool operator ==(Object other) =>
       other is PlaybackFailure &&
       other.kind == kind &&
       other.trackTitle == trackTitle &&
-      other.skippedCount == skippedCount;
+      other.skippedCount == skippedCount &&
+      other.cause == cause;
 
   @override
-  int get hashCode => Object.hash(kind, trackTitle, skippedCount);
+  int get hashCode => Object.hash(kind, trackTitle, skippedCount, cause);
 
   @override
   String toString() =>
       'PlaybackFailure(kind: $kind, track: $trackTitle, '
-      'skipped: $skippedCount)';
+      'skipped: $skippedCount, cause: $cause)';
 }
 
 /// Info resolve terakhir yang berhasil, untuk diagnosis (layar demo).

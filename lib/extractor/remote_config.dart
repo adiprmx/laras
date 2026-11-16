@@ -14,6 +14,11 @@
 /// - Fallback: bila fetch gagal, pakai cache terakhir yang valid; bila
 ///   belum pernah ada cache, pakai nilai bawaan dari
 ///   [client_definitions.dart].
+/// - Jaring pengaman VR (P0-2): config yang dikembalikan loader SELALU
+///   membawa minimal satu client bebas-script. Bila config remote atau
+///   cache disk tidak membawanya (mis. cache lama pra-VR yang tersimpan
+///   di perangkat), ANDROID_VR bawaan ditambahkan di ujung urutan —
+///   hanya di memori, cache disk tetap menyimpan JSON remote asli.
 ///
 /// URL asset: `https://github.com/adiprmx/laras/releases/download/config-v1/player-config.json`
 /// (rilis pre-release tag `config-v1`, BUKAN tag `v*` supaya tidak memicu
@@ -248,7 +253,9 @@ class RemoteConfigLoader {
   /// latar belakang dan nilai lama tetap dikembalikan segera (stale-
   /// while-revalidate) supaya resolve tidak tertunda.
   Future<RemotePlayerConfig> current({bool forceRefresh = false}) async {
-    _current ??= await _loadFromDisk() ?? RemotePlayerConfig.defaults();
+    _current ??= _withScriptFreeFallback(
+      await _loadFromDisk() ?? RemotePlayerConfig.defaults(),
+    );
     final RemotePlayerConfig current = _current!;
     final bool stale =
         DateTime.now().difference(current.fetchedAt) > ttl || forceRefresh;
@@ -295,8 +302,8 @@ class RemoteConfigLoader {
     ]) {
       try {
         final RemotePlayerConfig parsed = await _fetchOne(url);
-        _current = parsed;
-        return parsed;
+        _current = _withScriptFreeFallback(parsed);
+        return _current!;
       } on DioException {
         // URL ini gagal (mis. aset rilis belum ada -> 404): coba URL
         // berikutnya. Kegagalan terakhir ditangani di bawah.
@@ -309,9 +316,12 @@ class RemoteConfigLoader {
       }
     }
     // Semua URL gagal: cache terakhir yang valid, atau bawaan.
+    // _current sudah dinormalisasi saat ditetapkan; cache disk/bawaan
+    // yang baru dimuat di sini harus lewat jaring pengaman juga.
     return _current ??
-        await _loadFromDisk() ??
-        RemotePlayerConfig.defaults();
+        _withScriptFreeFallback(
+          await _loadFromDisk() ?? RemotePlayerConfig.defaults(),
+        );
   }
 
   Future<RemotePlayerConfig> _fetchOne(String url) async {
@@ -381,6 +391,31 @@ class RemoteConfigLoader {
       fetchedAt.toIso8601String(),
     );
     return parsed;
+  }
+
+  /// Jaring pengaman VR (P0-2): config tanpa satu pun client
+  /// bebas-script akan mematikan SEMUA putar saat script gagal — di mode
+  /// terdegradasi semua client dilewati tanpa ada jalan keluar. Bila
+  /// tidak ada client bebas-script, kembalikan salinan config dengan
+  /// ANDROID_VR bawaan di ujung urutan. Bila sudah ada, config dipakai
+  /// apa adanya (tidak diduplikasi). Normalisasi hanya di memori:
+  /// cache disk tetap menyimpan JSON remote asli supaya config remote
+  /// yang benar menggantikannya bersih saat fetch berhasil.
+  static RemotePlayerConfig _withScriptFreeFallback(
+    RemotePlayerConfig config,
+  ) {
+    if (config.clients.any(
+      (ClientDefinition c) => !c.requiresScript,
+    )) {
+      return config;
+    }
+    return RemotePlayerConfig(
+      clients: <ClientDefinition>[...config.clients, kAndroidVrClient],
+      playerHashes: config.playerHashes,
+      canaryVideoIds: config.canaryVideoIds,
+      fetchedAt: config.fetchedAt,
+      isRemote: config.isRemote,
+    );
   }
 
   Future<RemotePlayerConfig?> _loadFromDisk() async {

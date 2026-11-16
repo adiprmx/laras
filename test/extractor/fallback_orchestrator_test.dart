@@ -611,4 +611,57 @@ void main() {
       expect(caught.cause, ResolveFailureCause.parseFailed);
     });
   });
+
+  group('K6: client utama dimatikan (P6)', () {
+    test('client utama dihapus dari config -> 10 lagu tetap jalan via MWEB',
+        () async {
+      final FakeInnertube innertube = FakeInnertube(
+        responses: <String, Object>{'MWEB': okResponse(cipher: false)},
+      );
+      final FakeSolver solver = FakeSolver();
+      final StreamResolver resolver = makeResolver(
+        innertube: innertube,
+        solver: solver,
+        // Config tiruan TANPA WEB_REMIX (client utama dimatikan).
+        clients: const <ClientDefinition>[kMwebClient],
+        prefs: prefs,
+      );
+      for (int i = 0; i < 10; i++) {
+        final ResolvedAudio result = await resolver.resolve('k6-lagu-$i');
+        expect(result.clientName, 'MWEB');
+        expect(result.itag, 251);
+      }
+      expect(innertube.playerCalls, everyElement('MWEB'));
+      expect(innertube.playerCalls, hasLength(10));
+    });
+
+    test('client utama gagal total -> 10 lagu tetap jalan via fallback',
+        () async {
+      final FakeInnertube innertube = FakeInnertube(
+        responses: <String, Object>{
+          'WEB_REMIX': const ExtractorException(
+            ResolveFailureCause.httpForbidden,
+          ),
+          'MWEB': okResponse(cipher: false),
+        },
+      );
+      final FakeSolver solver = FakeSolver();
+      final StreamResolver resolver = makeResolver(
+        innertube: innertube,
+        solver: solver,
+        clients: const <ClientDefinition>[kWebRemixClient, kMwebClient],
+        prefs: prefs,
+      );
+      // 10 lagu berbeda: tidak satu pun melempar (tanpa error terlihat).
+      for (int i = 0; i < 10; i++) {
+        final ResolvedAudio result = await resolver.resolve('k6-fb-$i');
+        expect(result.clientName, 'MWEB');
+      }
+      // Client utama tetap dicoba dulu tiap lagu, lalu fallback.
+      expect(innertube.playerCalls.where((String c) => c == 'WEB_REMIX'),
+          hasLength(10));
+      expect(
+          innertube.playerCalls.where((String c) => c == 'MWEB'), hasLength(10));
+    });
+  });
 }

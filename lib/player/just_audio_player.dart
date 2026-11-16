@@ -35,6 +35,7 @@ import 'dart:io';
 
 import 'package:laras/downloads/stream_cache.dart';
 import 'package:laras/extractor/extractor.dart';
+import 'package:laras/resilience/unplayable_marking.dart';
 
 import 'audio_player_port.dart';
 import 'audio_session_port.dart';
@@ -100,6 +101,21 @@ class JustAudioPlayerPort implements AudioPlayerPort {
 
   /// Cache streaming (P5). Lihat [_playbackCache].
   set playbackCache(PlaybackCache? cache) => _playbackCache = cache;
+
+  /// Penanda lagu yang tidak bisa diputar (P6, B4.7). Null berarti tanpa
+  /// penandaan (tes tanpa database, atau database gagal dibuka). Bisa
+  /// dipasang belakangan lewat setter, sama seperti [playbackCache].
+  UnplayableMarker? _unplayableMarker;
+
+  /// Penanda lagu yang tidak bisa diputar (P6). Lihat [_unplayableMarker].
+  set unplayableMarker(UnplayableMarker? marker) => _unplayableMarker = marker;
+
+  /// Saklar "Hemat data" (P6, B8.1): diteruskan ke resolver supaya
+  /// format hemat data dipilih. Diubah dari Pengaturan via main.
+  bool _dataSaver = false;
+
+  /// Saklar "Hemat data" (P6). Lihat [_dataSaver].
+  set dataSaver(bool value) => _dataSaver = value;
 
   /// videoId yang sumber jendelanya saat ini berasal dari file cache
   /// (maks 2 entri, sejajar jendela). Dipakai `_onEngineError` untuk
@@ -406,6 +422,10 @@ class JustAudioPlayerPort implements AudioPlayerPort {
     final Track? track = _queue.current;
     if (track == null || _disposed) return;
     final PlaybackFailureKind kind = _kindOf(cause);
+    // P6 (B4.7): kegagalan playability di tengah putar juga menandai.
+    if (cause != null && cause.isPlayabilityFailure && !track.isLocal) {
+      _markUnplayable(track);
+    }
     // Indeks berikutnya mengabaikan mode ulangi satu: lagu yang baru
     // gagal total tidak dicoba lagi di rantai ini.
     final int current = _queue.currentIndex;
@@ -421,6 +441,7 @@ class JustAudioPlayerPort implements AudioPlayerPort {
             kind: kind,
             trackTitle: track.title,
             skippedCount: skipped + 1,
+            cause: cause?.cause,
           ),
         ),
       );
@@ -430,7 +451,11 @@ class JustAudioPlayerPort implements AudioPlayerPort {
       _snapshot.copyWith(
         status: PlayerStatus.error,
         playing: false,
-        lastError: PlaybackFailure(kind: kind, trackTitle: track.title),
+        lastError: PlaybackFailure(
+          kind: kind,
+          trackTitle: track.title,
+          cause: cause?.cause,
+        ),
       ),
     );
   }
@@ -512,8 +537,14 @@ class JustAudioPlayerPort implements AudioPlayerPort {
   Future<ResolvedAudio> _resolveFor(Track track) async {
     final ResolvedAudio? cached = _resolved[track.videoId];
     if (cached != null) return cached;
-    final ResolvedAudio resolved = await _resolver.resolve(track.videoId);
+    final ResolvedAudio resolved = await _resolver.resolve(
+      track.videoId,
+      dataSaver: _dataSaver,
+    );
     _resolved[track.videoId] = resolved;
+    // Satu resolve berhasil membersihkan tanda "tidak bisa diputar"
+    // (B4.7). Best-effort: tidak pernah menggagalkan pemutaran.
+    _clearUnplayableMark(track);
     // Catat ke cache streaming (P5): salinan file diunduh di latar
     // supaya pemutaran berikutnya bisa offline. Best-effort, tidak
     // pernah menggagalkan pemutaran.
@@ -540,6 +571,51 @@ class JustAudioPlayerPort implements AudioPlayerPort {
       ),
     );
     return resolved;
+  }
+
+  /// Apakah lagu bertanda boleh dilewati tanpa resolve (P6, B4.7).
+  ///
+  /// Benar bila lagu bertanda DAN tidak ada salinan file lokalnya
+  /// (unduhan/cache). Kegagalan baca penanda dianggap "tidak bertanda"
+  /// supaya pemutaran tidak pernah macet karena database.
+  Future<bool> _shouldSkipMarked(Track track) async {
+    final UnplayableMarker? marker = _unplayableMarker;
+    if (marker == null) return false;
+    bool marked;
+    try {
+      marked = await marker.isMarked(track.videoId);
+    } on Object {
+      return false;
+    }
+    if (!marked) return false;
+    final PlaybackCache? cache = _playbackCache;
+    if (cache == null) return true;
+    try {
+      final File? file = await cache.fileFor(track.videoId);
+      return file == null;
+    } on Object {
+      return true;
+    }
+  }
+
+  /// Tandai lagu sebagai tidak bisa diputar (best-effort, tidak
+  /// ditunggu, tidak pernah melempar ke pemanggil).
+  void _markUnplayable(Track track) {
+    final UnplayableMarker? marker = _unplayableMarker;
+    if (marker == null) return;
+    unawaited(
+      marker.mark(track.videoId).then<void>((_) {}, onError: (_) {}),
+    );
+  }
+
+  /// Bersihkan tanda "tidak bisa diputar" (best-effort, sama seperti
+  /// [_markUnplayable]).
+  void _clearUnplayableMark(Track track) {
+    final UnplayableMarker? marker = _unplayableMarker;
+    if (marker == null) return;
+    unawaited(
+      marker.clear(track.videoId).then<void>((_) {}, onError: (_) {}),
+    );
   }
 
   /// Urutan sumber audio (PRD B2.1): file unduhan dulu, lalu file cache
@@ -595,6 +671,14 @@ class JustAudioPlayerPort implements AudioPlayerPort {
     final Track? track = _queue.current;
     if (track == null || _disposed) return false;
     final int gen = _generation;
+    // P6 (B4.7): di rantai OTOMATIS (selesai lagu, lewati, pramuat),
+    // lagu yang bertanda "tidak bisa diputar" dilewati tanpa resolve —
+    // kecuali salinan file-nya tersedia (unduhan/cache tetap jalan).
+    // Ketukan pengguna pada lagu bertanda TETAP mencoba resolve:
+    // itu satu-satunya jalan tanda dibersihkan.
+    if (!userInitiated && !track.isLocal) {
+      if (await _shouldSkipMarked(track)) return false;
+    }
     _emit(
       _snapshot.copyWith(
         // Identitas lagu diumumkan di awal muat: rantai lewati dan
@@ -619,6 +703,12 @@ class JustAudioPlayerPort implements AudioPlayerPort {
       if (shouldPlay) await _playEngine();
       return true;
     } on ExtractorException catch (e) {
+      // P6 (B4.7): hanya kegagalan playability yang menandai lagu.
+      // Kegagalan jaringan tidak pernah menandai (flag tidak disetel
+      // untuk jaringan).
+      if (e.isPlayabilityFailure && !track.isLocal) {
+        _markUnplayable(track);
+      }
       if (userInitiated && gen == _generation && !_disposed) {
         _emit(
           _snapshot.copyWith(
@@ -627,6 +717,7 @@ class JustAudioPlayerPort implements AudioPlayerPort {
             lastError: PlaybackFailure(
               kind: _kindOf(e),
               trackTitle: track.title,
+              cause: e.cause,
             ),
           ),
         );
@@ -666,6 +757,10 @@ class JustAudioPlayerPort implements AudioPlayerPort {
   Future<void> _appendNext(Track track) async {
     final int gen = _generation;
     try {
+      // P6 (B4.7): lagu bertanda tidak dipramuat — tanpa ini, lagu
+      // bertanda masuk jendela dan diputar otomatis saat lagu sekarang
+      // selesai, sehingga lewati-otomatis di _doLoad tidak pernah jalan.
+      if (!track.isLocal && await _shouldSkipMarked(track)) return;
       final Uri uri = await _sourceUriFor(track);
       if (gen != _generation || _disposed) return;
       if (!identical(_queue.trackAfterCurrent, track)) return;

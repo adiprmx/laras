@@ -13,6 +13,7 @@ import 'package:laras/downloads/downloads.dart';
 import 'package:laras/features/downloads/download_button.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/player/track.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/test_database.dart';
 
@@ -83,7 +84,14 @@ void main() {
   Future<void> pumpButton(
     WidgetTester tester, {
     bool withServices = true,
+    // Bawaan: penjelasan penyimpanan sudah pernah tampil, supaya tes
+    // dialog kualitas menguji dialognya (bukan lembarnya). Tes lembar
+    // memakai storageNoticeShown: false.
+    bool storageNoticeShown = true,
   }) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      if (storageNoticeShown) kStorageNoticeShownKey: true,
+    });
     // start() di badan tes (zona FakeAsync): future pompa/emit-nya
     // berjalan di zona yang sama dengan tes dan maju lewat pump.
     if (withServices) downloads.start();
@@ -188,6 +196,69 @@ void main() {
 
     expect(find.byIcon(Icons.download_outlined), findsNothing);
     expect(find.byIcon(Icons.download_done), findsNothing);
+    await closePump(tester);
+  });
+
+  testWidgets('unduh pertama: lembar penyimpanan dulu, lanjut ke dialog',
+      (WidgetTester tester) async {
+    await pumpButton(tester, storageNoticeShown: false);
+
+    await tester.tap(find.byIcon(Icons.download_outlined));
+    await tester.pumpAndSettle();
+
+    final AppLocalizations strings = stringsOf(tester);
+    // Lembar penjelasan tampil, dialog kualitas belum.
+    expect(find.text(strings.dlStorageNoticeTitle), findsOneWidget);
+    expect(find.text(strings.dlStorageNoticeBody), findsOneWidget);
+    expect(find.text(strings.dlStorageNoticeContinue), findsOneWidget);
+    expect(find.text(strings.dlDownloadQualityTitle), findsNothing);
+
+    await tester.tap(find.text(strings.dlStorageNoticeContinue));
+    await tester.pumpAndSettle();
+    expect(find.text(strings.dlStorageNoticeTitle), findsNothing);
+    expect(find.text(strings.dlDownloadQualityTitle), findsOneWidget);
+
+    // Flag ditandai sesudah pengguna menekan lanjut.
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(kStorageNoticeShownKey), isTrue);
+    await closePump(tester);
+  });
+
+  testWidgets('lembar ditutup tanpa lanjut: unduhan batal, tampil lagi',
+      (WidgetTester tester) async {
+    await pumpButton(tester, storageNoticeShown: false);
+
+    await tester.tap(find.byIcon(Icons.download_outlined));
+    await tester.pumpAndSettle();
+
+    final AppLocalizations strings = stringsOf(tester);
+    expect(find.text(strings.dlStorageNoticeTitle), findsOneWidget);
+    // Ketuk penghalang di atas lembar (batal).
+    await tester.tapAt(const Offset(200, 80));
+    await tester.pumpAndSettle();
+    expect(find.text(strings.dlStorageNoticeTitle), findsNothing);
+    expect(find.text(strings.dlDownloadQualityTitle), findsNothing);
+
+    // Flag TIDAK ditandai: percobaan unduh berikutnya menampilkan
+    // lagi lembarnya.
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(kStorageNoticeShownKey), isNot(true));
+    await tester.tap(find.byIcon(Icons.download_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text(strings.dlStorageNoticeTitle), findsOneWidget);
+    await closePump(tester);
+  });
+
+  testWidgets('unduh kedua: langsung dialog kualitas tanpa lembar',
+      (WidgetTester tester) async {
+    await pumpButton(tester);
+
+    await tester.tap(find.byIcon(Icons.download_outlined));
+    await tester.pumpAndSettle();
+
+    final AppLocalizations strings = stringsOf(tester);
+    expect(find.text(strings.dlStorageNoticeTitle), findsNothing);
+    expect(find.text(strings.dlDownloadQualityTitle), findsOneWidget);
     await closePump(tester);
   });
 }

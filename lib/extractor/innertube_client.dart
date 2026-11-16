@@ -77,6 +77,13 @@ class InnertubeClient {
   /// visitorData terakhir yang berhasil diambil dari search.
   String? _visitorData;
 
+  /// Benar bila ada visitorData tersimpan (P0-2): dipakai snapshot
+  /// kegagalan untuk membedakan "semua client LOGIN_REQUIRED padahal
+  /// visitorData ada" dari "visitorData tidak pernah didapat" (dua akar
+  /// berbeda — yang kedua menunjuk IP perangkat kena cek bot sejak
+  /// search pertama).
+  bool get hasVisitorData => _visitorData != null && _visitorData!.isNotEmpty;
+
   /// Waktu pengambilan visitorData terakhir (untuk kedaluwarsa cache).
   DateTime? _visitorDataFetchedAt;
 

@@ -14,6 +14,22 @@ abstract final class AppTextStyles {
     height: 32 / 24,
   );
 
+  /// Judul besar onboarding (satu baris pendek, dibaca sekilas).
+  static const TextStyle hero = TextStyle(
+    fontSize: 28,
+    fontWeight: FontWeight.w700,
+    height: 34 / 28,
+  );
+
+  /// Judul seksi beranda (Lagu Pilihan, Baru Ditambahkan, Jelajah):
+  /// satu tingkat di atas judul lagu supaya hierarki seksi terbaca
+  /// sekilas tanpa label tambahan.
+  static const TextStyle section = TextStyle(
+    fontSize: 20,
+    fontWeight: FontWeight.w700,
+    height: 26 / 20,
+  );
+
   /// Judul lagu di Now Playing.
   static const TextStyle titleLarge = TextStyle(
     fontSize: 22,

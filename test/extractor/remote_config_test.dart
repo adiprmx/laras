@@ -403,5 +403,150 @@ void main() {
       expect(config.isRemote, isFalse);
       expect(config.clients.first.name, 'WEB_REMIX');
     });
+
+    test('K7 (P6): TTL lewat -> current() sajikan cache lama lalu ambil '
+        'config baru di latar', () async {
+      // Config B: sama dengan A kecuali versi client utama.
+      final Map<String, dynamic> bJson =
+          jsonDecode(kValidConfigJson) as Map<String, dynamic>;
+      (bJson['clients'] as List<dynamic>).first['version'] =
+          '1.20261111.00.00';
+      // Seed cache dengan config A + fetchedAt 7 jam lalu (string ISO-8601,
+      // sesuai format _parseAndCache).
+      await prefs.setString(kRemoteConfigCacheKey, kValidConfigJson);
+      await prefs.setString(
+        kRemoteConfigFetchedAtKey,
+        DateTime.now().subtract(const Duration(hours: 7)).toIso8601String(),
+      );
+      final FakeAdapter adapter =
+          FakeAdapter(body: jsonEncode(bJson));
+      final RemoteConfigLoader loader = RemoteConfigLoader(
+        dio: dioWith(adapter),
+        prefs: prefs,
+      );
+      // Panggilan pertama: cache lama langsung disajikan (stale) ...
+      final RemotePlayerConfig first = await loader.current();
+      expect(first.isRemote, isTrue);
+      expect(first.clients.first.version, '1.20261110.04.00');
+      // ... dan refresh latar berjalan.
+      for (int i = 0; i < 100 && adapter.fetchCount == 0; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      expect(adapter.fetchCount, 1);
+      // Panggilan kedua memakai config baru.
+      final RemotePlayerConfig second = await loader.current();
+      expect(second.clients.first.version, '1.20261111.00.00');
+    });
+  });
+
+  group('RemoteConfigLoader jaring pengaman VR (P0-2)', () {
+    /// kValidConfigJson + client ANDROID_VR (requiresScript false).
+    String configJsonWithVr() {
+      final Map<String, dynamic> json =
+          jsonDecode(kValidConfigJson) as Map<String, dynamic>;
+      (json['clients'] as List<dynamic>).add(<String, dynamic>{
+        'name': 'ANDROID_VR',
+        'version': '1.65.10',
+        'userAgent': 'com.google.android.youtube/test',
+        'clientId': '14',
+        'requiresScript': false,
+      });
+      return jsonEncode(json);
+    }
+
+    test('fetch sukses config tanpa VR -> VR bawaan ditambahkan di ujung',
+        () async {
+      // kValidConfigJson adalah config lama pra-VR (WEB+MWEB saja):
+      // tanpa jaring pengaman, satu kegagalan script mematikan semua
+      // putar karena tidak ada client bebas-script.
+      final RemoteConfigLoader loader = RemoteConfigLoader(
+        dio: dioWith(FakeAdapter(body: kValidConfigJson)),
+        prefs: prefs,
+      );
+      final RemotePlayerConfig config = await loader.refresh(force: true);
+      expect(config.isRemote, isTrue);
+      expect(config.clients.length, 3);
+      expect(config.clients.last.name, 'ANDROID_VR');
+      expect(config.clients.last.version, '1.65.10');
+      expect(config.clients.last.requiresScript, isFalse);
+      // Cache disk tetap menyimpan JSON remote ASLI (tanpa VR):
+      // normalisasi hanya di memori, supaya config remote yang benar
+      // menggantikannya bersih saat fetch berhasil.
+      expect(
+        prefs.getString(kRemoteConfigCacheKey),
+        isNot(contains('ANDROID_VR')),
+      );
+    });
+
+    test('cache lama tanpa VR + fetch gagal -> current() tetap membawa VR',
+        () async {
+      await prefs.setString(kRemoteConfigCacheKey, kValidConfigJson);
+      await prefs.setString(
+        kRemoteConfigFetchedAtKey,
+        DateTime.now().toIso8601String(),
+      );
+      final DioException networkError = DioException(
+        requestOptions: RequestOptions(path: kRemoteConfigUrl),
+        type: DioExceptionType.connectionError,
+      );
+      final RemoteConfigLoader loader = RemoteConfigLoader(
+        dio: dioWith(FakeAdapter(error: networkError)),
+        prefs: prefs,
+      );
+      final RemotePlayerConfig config = await loader.current();
+      expect(config.isRemote, isTrue);
+      expect(
+        config.clients.map((ClientDefinition c) => c.name),
+        <String>['WEB_REMIX', 'MWEB', 'ANDROID_VR'],
+      );
+      expect(config.clients.last.requiresScript, isFalse);
+    });
+
+    test('config dengan VR -> tidak diduplikasi', () async {
+      final RemoteConfigLoader loader = RemoteConfigLoader(
+        dio: dioWith(FakeAdapter(body: configJsonWithVr())),
+        prefs: prefs,
+      );
+      final RemotePlayerConfig config = await loader.refresh(force: true);
+      expect(config.clients.length, 3);
+      expect(
+        config.clients
+            .where((ClientDefinition c) => c.name == 'ANDROID_VR')
+            .length,
+        1,
+      );
+    });
+
+    test('cache basi tanpa VR -> sajikan cache + VR, lalu config baru '
+        'tetap satu VR', () async {
+      await prefs.setString(kRemoteConfigCacheKey, kValidConfigJson);
+      await prefs.setString(
+        kRemoteConfigFetchedAtKey,
+        DateTime.now().subtract(const Duration(hours: 7)).toIso8601String(),
+      );
+      final FakeAdapter adapter =
+          FakeAdapter(body: configJsonWithVr());
+      final RemoteConfigLoader loader = RemoteConfigLoader(
+        dio: dioWith(adapter),
+        prefs: prefs,
+      );
+      // Panggilan pertama: cache lama + VR jaring pengaman.
+      final RemotePlayerConfig first = await loader.current();
+      expect(first.clients.last.name, 'ANDROID_VR');
+      for (int i = 0; i < 100 && adapter.fetchCount == 0; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      expect(adapter.fetchCount, 1);
+      // Panggilan kedua: config baru dari remote — VR-nya dari remote,
+      // bukan dari jaring pengaman (tidak ganda).
+      final RemotePlayerConfig second = await loader.current();
+      expect(second.clients.length, 3);
+      expect(
+        second.clients
+            .where((ClientDefinition c) => c.name == 'ANDROID_VR')
+            .length,
+        1,
+      );
+    });
   });
 }

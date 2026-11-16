@@ -516,9 +516,6 @@
   "@settings": {
     "description": "Judul layar Pengaturan dan label aksesibilitas ikon gerigi."
   },
-  "@settingsComingSoon": {
-    "description": "Pesan jujur di layar Pengaturan selama fitur pengaturan belum dibangun (P0). Dihapus saat pengaturan selesai."
-  },
   "@shuffle": {
     "description": "Label tombol acak."
   },
@@ -623,6 +620,7 @@
   "clearHistoryBody": "Semua riwayat putar akan dihapus. Lagu di Library tidak ikut terhapus.",
   "clearHistoryTitle": "Hapus semua riwayat?",
   "clearPlayedSongsSpace": "Kosongkan ruang lagu yang pernah diputar",
+  "close": "Tutup",
   "comingSoon": "Segera hadir",
   "createPlaylist": "Buat playlist",
   "delete": "Hapus",
@@ -753,7 +751,6 @@
   "serviceNormal": "Normal",
   "serviceStatus": "Status layanan",
   "settings": "Pengaturan",
-  "settingsComingSoon": "Pengaturan belum tersedia di versi ini. Pengaturan datang di versi berikutnya.",
   "shuffle": "Acak",
   "skipSilence": "Lewati bagian hening",
   "skippedUnplayable": "{count} lagu dilewati karena tidak bisa diputar.",
@@ -1060,5 +1057,405 @@
   "dlNoFreeSpaceInfo": "Sisa ruang tidak bisa dibaca di HP ini.",
   "@dlNoFreeSpaceInfo": {
     "description": "P5: keterangan saat sisa ruang HP tidak bisa dibaca."
+  },
+  "causeForbidden": "Layanan musik sedang menolak permintaan. Coba lagi nanti.",
+  "@causeForbidden": {
+    "description": "P6: pesan saat resolve gagal karena server menolak (403)."
+  },
+  "causeEmptyResponse": "Layanan musik tidak menjawab. Coba lagi nanti.",
+  "@causeEmptyResponse": {
+    "description": "P6: pesan saat server tidak memberi jawaban yang bisa dipakai."
+  },
+  "causeParseFailed": "YouTube mungkin mengubah layanannya. Periksa pembaruan.",
+  "@causeParseFailed": {
+    "description": "P6: pesan saat respons tidak bisa dibaca karena bentuknya berubah."
+  },
+  "causeSabrOnly": "Lagu ini memakai cara putar baru yang belum didukung. Periksa pembaruan.",
+  "@causeSabrOnly": {
+    "description": "P6: pesan saat semua format adalah SABR."
+  },
+  "causeSolverTimeout": "Lagu ini lama disiapkan. Coba lagi nanti.",
+  "@causeSolverTimeout": {
+    "description": "P6: pesan saat pemecah tanda tangan kehabisan waktu."
+  },
+  "causeUnknownPlayerHash": "YouTube mengubah pemutarnya. Periksa pembaruan.",
+  "@causeUnknownPlayerHash": {
+    "description": "P6: pesan saat hash player tidak dikenal."
+  },
+  "causeForbiddenShort": "Ditolak layanan musik",
+  "@causeForbiddenShort": {
+    "description": "P6 (diagnostik): varian satu baris untuk mini-player."
+  },
+  "causeEmptyResponseShort": "Layanan tidak menjawab",
+  "@causeEmptyResponseShort": {
+    "description": "P6 (diagnostik): varian satu baris untuk mini-player."
+  },
+  "causeParseFailedShort": "YouTube mungkin berubah",
+  "@causeParseFailedShort": {
+    "description": "P6 (diagnostik): varian satu baris untuk mini-player."
+  },
+  "causeSabrOnlyShort": "Cara putar belum didukung",
+  "@causeSabrOnlyShort": {
+    "description": "P6 (diagnostik): varian satu baris untuk mini-player."
+  },
+  "causeSolverTimeoutShort": "Lama disiapkan",
+  "@causeSolverTimeoutShort": {
+    "description": "P6 (diagnostik): varian satu baris untuk mini-player."
+  },
+  "causeUnknownPlayerHashShort": "Pemutar YouTube berubah",
+  "@causeUnknownPlayerHashShort": {
+    "description": "P6 (diagnostik): varian satu baris untuk mini-player."
+  },
+  "updateUpToDate": "Sudah yang terbaru. Semua berjalan baik.",
+  "@updateUpToDate": {
+    "description": "P6: hasil periksa pembaruan, tidak ada yang baru dan layanan baik."
+  },
+  "updateApplied": "Pembaruan berhasil dipakai. Lagu bisa diputar lagi.",
+  "@updateApplied": {
+    "description": "P6: hasil periksa pembaruan, config baru dipakai dan kanari baik."
+  },
+  "updateStillBroken": "Belum ada perbaikan. Coba lagi nanti.",
+  "@updateStillBroken": {
+    "description": "P6: hasil periksa pembaruan, layanan masih bermasalah."
+  },
+  "settingsServiceGroup": "Layanan",
+  "@settingsServiceGroup": {
+    "description": "P6: judul kelompok layanan di Pengaturan."
+  },
+  "settingsAppGroup": "App",
+  "@settingsAppGroup": {
+    "description": "P6: judul kelompok app di Pengaturan."
+  },
+  "dataSaverDesc": "Memakai kuota lebih sedikit saat memutar lagu.",
+  "@dataSaverDesc": {
+    "description": "P6: keterangan saklar Hemat data di Pengaturan."
+  },
+  "wifiOnlyDownloads": "Unduh saat WiFi saja",
+  "@wifiOnlyDownloads": {
+    "description": "P6: saklar unduh WiFi saja (B8.4)."
+  },
+  "wifiOnlyDesc": "Unduhan berjalan hanya saat HP tersambung WiFi.",
+  "@wifiOnlyDesc": {
+    "description": "P6: keterangan saklar unduh WiFi saja."
+  },
+  "serviceCheckedAt": "Terakhir diperiksa {time}",
+  "@serviceCheckedAt": {
+    "description": "P6: keterangan waktu periksa terakhir di baris status layanan.",
+    "placeholders": {
+      "time": {
+        "example": "pukul 10.15",
+        "type": "String"
+      }
+    }
+  },
+  "serviceNeverChecked": "Belum pernah diperiksa",
+  "@serviceNeverChecked": {
+    "description": "P6: keterangan bila status layanan belum pernah diperiksa."
+  },
+  "faqTitle": "Pertanyaan yang sering ditanyakan",
+  "@faqTitle": {
+    "description": "P6: judul layar FAQ (B11.3)."
+  },
+  "showOnboardingAgain": "Lihat pengenalan lagi",
+  "@showOnboardingAgain": {
+    "description": "P6: baris Pengaturan yang membuka ulang alur pengenalan (onboarding) milik Tim Rombak UI-2."
+  },
+  "faq1q": "Kenapa lagu tiba-tiba tidak bisa diputar?",
+  "@faq1q": {
+    "description": "P6: FAQ 1."
+  },
+  "faq1a": "Lagu-lagu di app ini berasal dari YouTube. YouTube sering mengubah sistemnya tanpa pemberitahuan, dan perubahan itu bisa membuat lagu tidak bisa diputar sementara. Biasanya kami memperbaikinya dari jarak jauh tanpa kamu perlu mengunduh apa-apa. Coba tekan tombol 'Periksa pembaruan' di Pengaturan, atau coba lagi besok.",
+  "@faq1a": {
+    "description": "P6: jawaban FAQ 1 (tanpa frasa 'dalam beberapa hari' sesuai PRD B11.3)."
+  },
+  "faq2q": "Apakah app ini legal?",
+  "@faq2q": {
+    "description": "P6: FAQ 2."
+  },
+  "faq2a": "App ini memakai akses tidak resmi ke YouTube Music, dan cara itu melanggar Terms of Service YouTube. App ini bukan app resmi dan tidak didukung YouTube. Kami menulis ini secara terbuka supaya kamu tahu risikonya sebelum memakai app ini.",
+  "@faq2a": {
+    "description": "P6: jawaban FAQ 2."
+  },
+  "faq3q": "Kenapa tidak ada login?",
+  "@faq3q": {
+    "description": "P6: FAQ 3."
+  },
+  "faq3a": "Kami sengaja tidak menambahkan login di versi ini, supaya tidak ada data akun Google yang tersimpan di HP kamu lewat app ini. Semua fitur bisa dipakai tanpa akun. Login mungkin ditambahkan nanti, tapi tidak ada jadwal pastinya.",
+  "@faq3a": {
+    "description": "P6: jawaban FAQ 3."
+  },
+  "faq4q": "Apakah app ini mengumpulkan data saya?",
+  "@faq4q": {
+    "description": "P6: FAQ 4."
+  },
+  "faq4a": "Tidak. App ini tidak punya akun, tidak mengirim laporan apa pun, dan semua datamu hanya tersimpan di HP ini. Tapi Google dan YouTube tetap melihat alamat internetmu dan lagu yang kamu cari saat app dipakai, karena lagu-lagunya berasal dari mereka.",
+  "@faq4a": {
+    "description": "P6: jawaban FAQ 4."
+  },
+  "faq5q": "Kenapa lagu yang saya unduh tidak ikut tersimpan di file salinan?",
+  "@faq5q": {
+    "description": "P6: FAQ 5."
+  },
+  "faq5a": "Di versi ini belum ada file salinan. Fitur itu akan hadir di versi berikutnya, dan file lagunya tetap perlu diunduh ulang karena hanya daftar lagu dan pengaturan yang ikut tersimpan.",
+  "@faq5a": {
+    "description": "P6: jawaban FAQ 5, ditulis ulang jujur untuk v1 (backup baru ada di P8; P8 wajib memperbarui jawaban ini)."
+  },
+  "faq6q": "Bagaimana cara memindahkan data ke HP baru?",
+  "@faq6q": {
+    "description": "P6: FAQ 6."
+  },
+  "faq6a": "Di versi ini data belum bisa dipindahkan ke HP lain. Fitur salinan data akan hadir di versi berikutnya.",
+  "@faq6a": {
+    "description": "P6: jawaban FAQ 6, ditulis ulang jujur untuk v1 (backup baru ada di P8; P8 wajib memperbarui jawaban ini)."
+  },
+  "faq7q": "Kenapa musik berhenti sendiri saat saya membuka app lain?",
+  "@faq7q": {
+    "description": "P6: FAQ 7."
+  },
+  "faq7a": "Biasanya karena HP kamu mematikan app ini untuk menghemat baterai. Buka pengaturan HP, cari app ini di pengaturan baterai, dan matikan penghemat baterai untuk app ini. Caranya berbeda di tiap merek HP.",
+  "@faq7a": {
+    "description": "P6: jawaban FAQ 7."
+  },
+  "faq8q": "Kenapa lagu terdengar cepat atau lambat?",
+  "@faq8q": {
+    "description": "P6: FAQ 8."
+  },
+  "faq8a": "Periksa tombol kecepatan di layar pemutar. Kalau angkanya bukan 1x, berarti kecepatan pemutaran berubah. Ketuk tombolnya dan pilih 1x untuk kembali normal.",
+  "@faq8a": {
+    "description": "P6: jawaban FAQ 8."
+  },
+  "faq9q": "Apakah saya bisa memakai app ini tanpa internet?",
+  "@faq9q": {
+    "description": "P6: FAQ 9."
+  },
+  "faq9a": "Bisa, untuk lagu yang sudah kamu unduh dan lagu yang pernah kamu putar dan masih tersimpan di HP. Mencari lagu baru dan memutar lagu yang belum pernah diputar butuh internet.",
+  "@faq9a": {
+    "description": "P6: jawaban FAQ 9 (tanpa kata 'cache')."
+  },
+  "faq10q": "Kenapa kualitas suaranya tidak sebagus Spotify Premium?",
+  "@faq10q": {
+    "description": "P6: FAQ 10."
+  },
+  "faq10a": "Kualitas suara terbaik yang tersedia dari YouTube memang di bawah layanan berbayar. Tidak ada pilihan kualitas yang lebih tinggi dari sumber ini. App ini tidak bisa menyediakan kualitas di atas itu.",
+  "@faq10a": {
+    "description": "P6: jawaban FAQ 10 (tanpa angka kbps, PRD B3.2)."
+  },
+  "faq11q": "Bagaimana cara melaporkan kerusakan?",
+  "@faq11q": {
+    "description": "P6: FAQ 11."
+  },
+  "faq11a": "Buka Pengaturan, lalu 'Laporkan kerusakan'. App akan menyiapkan email berisi info HP dan versi app. Info itu tidak berisi data pribadimu. Tulis apa yang terjadi, lalu kirim.",
+  "@faq11a": {
+    "description": "P6: jawaban FAQ 11."
+  },
+  "faq12q": "Apakah app ini akan selalu gratis?",
+  "@faq12q": {
+    "description": "P6: FAQ 12."
+  },
+  "faq12a": "Ya. App ini gratis, tanpa iklan, dan tanpa pembelian di dalam app. Kode sumbernya terbuka dan siapa pun bisa memeriksanya.",
+  "@faq12a": {
+    "description": "P6: jawaban FAQ 12."
+  },
+  "aboutTitle": "Tentang Laras",
+  "@aboutTitle": {
+    "description": "P6: judul layar Tentang (B11.1)."
+  },
+  "aboutBody": "Laras adalah pemutar musik gratis tanpa iklan. Lagu bisa diputar lewat internet atau diunduh untuk didengar offline.",
+  "@aboutBody": {
+    "description": "P6: penjelasan singkat di layar Tentang."
+  },
+  "aboutVersion": "Versi {version}",
+  "@aboutVersion": {
+    "description": "P6: nomor versi app di layar Tentang.",
+    "placeholders": {
+      "version": {
+        "example": "0.9.0",
+        "type": "String"
+      }
+    }
+  },
+  "aboutDisclaimer": "Laras bukan produk YouTube atau Google. App ini memakai akses tidak resmi ke YouTube Music dan bisa berhenti berfungsi kapan saja bila YouTube mengubah layanannya.",
+  "@aboutDisclaimer": {
+    "description": "P6: disclaimer non-afiliasi dan legal di layar Tentang."
+  },
+  "aboutLicense": "Kode sumber terbuka dengan lisensi GPL-3.0-only.",
+  "@aboutLicense": {
+    "description": "P6: baris lisensi di layar Tentang."
+  },
+  "aboutRepo": "Kode sumber",
+  "@aboutRepo": {
+    "description": "P6: baris tautan repo di layar Tentang."
+  },
+  "aboutPrivacyNote": "Laras tidak mengumpulkan data. Semua lagu, playlist, dan pengaturanmu hanya tersimpan di HP ini.",
+  "@aboutPrivacyNote": {
+    "description": "P6: ringkasan privasi di layar Tentang (kebijakan lengkap menyusul di P10)."
+  },
+  "aboutEmail": "Email",
+  "@aboutEmail": {
+    "description": "P6: baris alamat email kontak di layar Tentang."
+  },
+  "reportProblem": "Laporkan kerusakan",
+  "@reportProblem": {
+    "description": "P6: baris laporkan kerusakan di Pengaturan (B11.4)."
+  },
+  "reportProblemNoMail": "Tidak ada aplikasi email di HP ini. Alamat email sudah disalin.",
+  "@reportProblemNoMail": {
+    "description": "P6: pesan bila tidak ada app email untuk laporan kerusakan."
+  },
+  "reportDialogBody": "Kode di bawah membantu tim mengetahui apa yang rusak. Salin kode ini dan tempel di chat, atau kirim lewat email.",
+  "@reportDialogBody": {
+    "description": "P6 (diagnostik): isi dialog laporkan kerusakan."
+  },
+  "diagnosticCodeLabel": "Kode diagnostik",
+  "@diagnosticCodeLabel": {
+    "description": "P6 (diagnostik): label di atas kotak kode."
+  },
+  "copyCode": "Salin kode",
+  "@copyCode": {
+    "description": "P6 (diagnostik): tombol salin kode diagnostik."
+  },
+  "codeCopied": "Kode disalin.",
+  "@codeCopied": {
+    "description": "P6 (diagnostik): snackbar sesudah kode disalin."
+  },
+  "sendViaEmail": "Kirim lewat email",
+  "@sendViaEmail": {
+    "description": "P6 (diagnostik): tombol lanjut ke aplikasi email."
+  },
+  "emailCopied": "Alamat email sudah disalin.",
+  "@emailCopied": {
+    "description": "P6: pesan setelah alamat email disalin."
+  },
+  "honestyTitle": "Sebelum mulai",
+  "@honestyTitle": {
+    "description": "P6: judul lembar kejujuran satu kali (B11.5)."
+  },
+  "honestyBody": "Laras memutar lagu dari YouTube Music, gratis dan tanpa iklan. Kadang lagu tidak bisa diputar karena YouTube mengubah layanannya. Lagu yang sudah diunduh tetap bisa diputar.",
+  "@honestyBody": {
+    "description": "P6: isi lembar kejujuran satu kali."
+  },
+  "deleteUnplayable": "Hapus lagu yang tidak bisa diputar",
+  "@deleteUnplayable": {
+    "description": "P6: tombol hapus massal lagu yang tidak bisa diputar."
+  },
+  "deleteUnplayableTitle": "Hapus lagu yang tidak bisa diputar?",
+  "@deleteUnplayableTitle": {
+    "description": "P6: judul dialog hapus massal."
+  },
+  "deleteUnplayableBody": "{count} lagu akan dihapus dari Library. Lagu yang sudah diunduh tidak ikut terhapus.",
+  "@deleteUnplayableBody": {
+    "description": "P6: isi dialog hapus massal.",
+    "placeholders": {
+      "count": {
+        "example": "3",
+        "type": "int"
+      }
+    }
+  },
+  "deleteUnplayableDone": "{count} lagu sudah dihapus.",
+  "@deleteUnplayableDone": {
+    "description": "P6: pesan setelah hapus massal.",
+    "placeholders": {
+      "count": {
+        "example": "3",
+        "type": "int"
+      }
+    }
+  },
+  "wipeData": "Hapus semua data",
+  "@wipeData": {
+    "description": "P6: baris hapus semua data di Pengaturan."
+  },
+  "wipeDataTitle1": "Hapus semua data?",
+  "@wipeDataTitle1": {
+    "description": "P6: judul dialog konfirmasi pertama hapus data."
+  },
+  "wipeDataBody1": "Semua lagu, playlist, riwayat, unduhan, dan pengaturan akan dihapus dari HP ini. Data tidak bisa dikembalikan sesudah dihapus.",
+  "@wipeDataBody1": {
+    "description": "P6: isi dialog konfirmasi pertama hapus data."
+  },
+  "wipeDataTitle2": "Yakin, hapus semuanya?",
+  "@wipeDataTitle2": {
+    "description": "P6: judul dialog konfirmasi kedua hapus data."
+  },
+  "wipeDataBody2": "Ini langkah terakhir. Sesudah kamu menekan tombol di bawah, semua data hilang dan app kembali seperti baru dipasang.",
+  "@wipeDataBody2": {
+    "description": "P6: isi dialog konfirmasi kedua hapus data."
+  },
+  "wipeDataConfirm": "Ya, hapus semuanya",
+  "@wipeDataConfirm": {
+    "description": "P6: tombol konfirmasi akhir hapus data."
+  },
+  "wipeDataWorking": "Menghapus data...",
+  "@wipeDataWorking": {
+    "description": "P6: teks saat penghapusan data berjalan."
+  },
+  "wipeDataDone": "Semua data sudah dihapus.",
+  "@wipeDataDone": {
+    "description": "P6: pesan setelah semua data dihapus."
+  },
+  "wipeDataCloseApp": "Tutup aplikasi",
+  "@wipeDataCloseApp": {
+    "description": "P6: tombol menutup app setelah data dihapus."
+  },
+  "wipeDataPartial": "Sebagian data tidak bisa dihapus. Coba hapus data app dari pengaturan HP.",
+  "@wipeDataPartial": {
+    "description": "P6: pesan bila penghapusan data hanya sebagian berhasil."
+  },
+  "skip": "Lewati",
+  "@skip": {
+    "description": "Rombak UI-2: tombol lewati onboarding."
+  },
+  "onboardingTitle1": "Selamat datang di Laras",
+  "@onboardingTitle1": {
+    "description": "Rombak UI-2: judul halaman 1 onboarding (sambutan)."
+  },
+  "onboardingBody1": "Laras memutar lagu gratis, tanpa iklan, dan tanpa login. Tidak ada akun, tidak ada biaya.",
+  "@onboardingBody1": {
+    "description": "Rombak UI-2: isi halaman 1 onboarding."
+  },
+  "onboardingTitle2": "Cari dan putar lagu apa pun",
+  "@onboardingTitle2": {
+    "description": "Rombak UI-2: judul halaman 2 onboarding (cari dan putar)."
+  },
+  "onboardingBody2": "Ketik judul lagu atau nama artis, lalu ketuk untuk memutar. Lima lagu pilihan ada di beranda.",
+  "@onboardingBody2": {
+    "description": "Rombak UI-2: isi halaman 2 onboarding. Lima lagu adalah jumlah nyata lagu kanari beranda."
+  },
+  "onboardingTitle3": "Unduh untuk didengar offline",
+  "@onboardingTitle3": {
+    "description": "Rombak UI-2: judul halaman 3 onboarding (unduh offline)."
+  },
+  "onboardingBody3": "Ketuk ikon unduh di lagu mana pun. Lagu tersimpan di HP dan bisa diputar tanpa internet.",
+  "@onboardingBody3": {
+    "description": "Rombak UI-2: isi halaman 3 onboarding."
+  },
+  "onboardingTitle4": "Unduh dulu, baru bisa offline",
+  "@onboardingTitle4": {
+    "description": "Rombak UI-2: judul halaman 4 onboarding (model unduh-dulu; verdict owner 18:56 WIB)."
+  },
+  "onboardingBody4": "Lagu di Laras bukan bawaan aplikasi. Pertama kali memutar atau mengunduh lagu butuh internet. Ketuk ikon unduh saat online, lagunya tersimpan di HP. Setelah itu, lagu bisa diputar kapan pun tanpa internet.",
+  "@onboardingBody4": {
+    "description": "Rombak UI-2: isi halaman 4 onboarding. Mencegah kesalahpahaman 'lagu langsung bunyi offline': lagu bukan bawaan app, butuh internet sekali di awal."
+  },
+  "onboardingNext": "Lanjut",
+  "@onboardingNext": {
+    "description": "Rombak UI-2: tombol ke halaman onboarding berikutnya."
+  },
+  "onboardingStart": "Mulai mendengarkan",
+  "@onboardingStart": {
+    "description": "Rombak UI-2: tombol selesai onboarding, masuk beranda."
+  },
+  "dlStorageNoticeTitle": "Lagu tersimpan di HP ini",
+  "@dlStorageNoticeTitle": {
+    "description": "Rombak UI-2: judul penjelasan penyimpanan saat pertama mengunduh."
+  },
+  "dlStorageNoticeBody": "Lagu yang kamu unduh disimpan di folder milik Laras di HP ini. Tidak butuh izin apa pun. Bila Laras dihapus dari HP, lagu ikut terhapus.",
+  "@dlStorageNoticeBody": {
+    "description": "Rombak UI-2: isi penjelasan penyimpanan. Fakta dari download_paths.dart: app-specific external storage, scoped storage tanpa izin, ikut terhapus saat app dihapus."
+  },
+  "dlStorageNoticeContinue": "Mengerti, lanjut unduh",
+  "@dlStorageNoticeContinue": {
+    "description": "Rombak UI-2: tombol lanjut ke dialog kualitas sesudah penjelasan penyimpanan."
   }
 }

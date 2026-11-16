@@ -389,3 +389,37 @@ perilaku app tidak cocok (callSite NULL, table NULL) -> `ExtractorException`
   (hanya uji perangkat; re-resolve P2 menanganinya bila ya).
 - Berapa lama varian non-tcl lama tetap dilayani YouTube (fallback ini
   rapuh; VR adalah jaring pengaman yang tidak bergantung base.js).
+
+---
+
+## Adendum koordinator 16 Nov 2026 ~16:55 WIB: dinding googlevideo dari VM memburuk + non-deterministik
+
+Investigasi kegagalan tes live unduh P5 (probe resolve + unduh byte
+via kode app nyata, lalu matriks curl pada URL hasil resolve):
+
+- Resolve BUKAN penyebab: itag 251 WEB_REMIX resolve OK 31-40 dtk,
+  contentLength 4.808.098 byte, host rr2---sn-p5qs7nsk.googlevideo.com.
+- Unduh byte dari VM: HTTP 403, 0 byte (Dio, tanpa Range maupun
+  dengan `Range: bytes=0-`, dengan maupun tanpa User-Agent browser).
+- Matriks curl pada URL yang sama (URL hasil resolve, ~10 mnt):
+  - `Range: bytes=0-999` -> 206 + 1.000 byte, magic `1a45dfa3`
+    (EBML/WebM) — TAPI pengulangan request IDENTIK menit berikutnya
+    -> 302. Perilaku NON-DETERMINISTIK per request.
+  - `Range: bytes=0-9999` (10 KiB) -> 206 + 10.000 byte.
+  - `Range: bytes=0-65535`, `0-262143`, `0-524287`, `0-` (terbuka),
+    tanpa Range -> 302 CMS redirect (`cms_redirect=yes`,
+    `redirect_counter=1`) ke host rr lain; mengikuti redirect
+    (curl -L maupun Dio) -> 403 di host tujuan, 0 byte.
+    Tidak ada header Set-Cookie pada 302.
+- Kesimpulan: dari IP egress VM, host tepi (edge) googlevideo
+  menolak request byte (403 di 0 byte) — LEBIH BURUK dari temuan P1
+  (1 MiB lalu 403). Ambang 206-vs-302 tidak deterministik, jadi
+  unduh per-chunk kecil pun BUKAN jalan keluar dari VM.
+- BUKAN bug aplikasi: layanan unduh P5 berperilaku benar (retry 3x
+  lalu gagal dengan alasan `network`); tidak ada bentuk request
+  (Range/UA/redirect) yang terbukti mengunduh penuh dari VM.
+  Perbaikan kode TIDAK diusulkan dari temuan ini — satu-satunya
+  penentu adalah uji perangkat owner (IP residensial), sesuai
+  kondisi gate P1. Tes live unduh penuh TIDAK BISA lolos dari VM
+  (dinding 1 MiB pun < 4,8 MB file) — jangan ulang tes ini dari VM
+  untuk membuktikan unduh; bukti E2E unduh adalah uji K8 di HP owner.

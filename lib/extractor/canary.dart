@@ -20,7 +20,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'errors.dart';
-import 'fallback_orchestrator.dart';
+import 'resolver.dart';
 
 /// Status layanan dari cek kanari.
 enum CanaryStatus {
@@ -65,16 +65,20 @@ const String _kCanaryHistoryKey = 'laras.canary_history';
 const String _kCanaryStreakKey = 'laras.canary_streak';
 
 /// Pemeriksa kanari.
+///
+/// [resolver] adalah antarmuka AudioResolver (bukan kelas konkret)
+/// supaya pemakaian di main() dan tes bisa menyuntik resolver apa pun —
+/// kanari hanya memanggil `resolve(videoId)`.
 class CanaryChecker {
   CanaryChecker({
-    required StreamResolver resolver,
+    required AudioResolver resolver,
     required SharedPreferences prefs,
     required List<String> videoIds,
   }) : _resolver = resolver,
        _prefs = prefs,
        _videoIds = videoIds;
 
-  final StreamResolver _resolver;
+  final AudioResolver _resolver;
   final SharedPreferences _prefs;
   final List<String> _videoIds;
 

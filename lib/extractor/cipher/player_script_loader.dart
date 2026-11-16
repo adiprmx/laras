@@ -138,9 +138,14 @@ class PlayerScriptLoader {
     // — yang dieksekusi selalu varian non-tcl karena varian tcl gagal
     // di ekstraksi (di bawah) sebelum mencapai solver.
     if (hash == null || !allowedHashes.contains(hash)) {
-      throw const ExtractorException(
+      // P0-2: detail memuat hash yang ditolak — tanpa itu, diagnosis
+      // live buta (tes live hanya melaporkan "tidak ada di daftar" tanpa
+      // menyebut hash-nya, terbukti 16 Nov 2026). Hash player adalah
+      // data publik dari URL YouTube, bukan secret.
+      throw ExtractorException(
         ResolveFailureCause.unknownPlayerHash,
-        detail: 'hash player tidak ada di daftar yang dikenal',
+        detail: 'hash player ${hash ?? '(tidak terbaca dari jsUrl)'} '
+            'tidak ada di daftar yang dikenal',
       );
     }
     // Timeout 90 detik (dinaikkan dari 60 di P0): unduh base.js 2,9 MB
@@ -188,11 +193,12 @@ class PlayerScriptLoader {
   }
 
   /// Lempar unknownPlayerHash bila [hash] tidak ada di [allowed].
+  /// Detail memuat hash yang ditolak (diagnosis live, P0-2).
   static void _requireAllowed(String hash, Set<String> allowed) {
     if (!allowed.contains(hash)) {
-      throw const ExtractorException(
+      throw ExtractorException(
         ResolveFailureCause.unknownPlayerHash,
-        detail: 'hash player tidak ada di daftar yang dikenal',
+        detail: 'hash player $hash tidak ada di daftar yang dikenal',
       );
     }
   }

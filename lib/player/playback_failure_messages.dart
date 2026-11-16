@@ -11,6 +11,7 @@
 library;
 
 import 'package:laras/l10n/generated/app_localizations.dart';
+import 'package:laras/resilience/cause_messages.dart';
 
 import 'player_state.dart';
 
@@ -25,13 +26,23 @@ String playbackFailureMessage(
   final String message = switch (failure.kind) {
     PlaybackFailureKind.network => strings.noInternet,
     PlaybackFailureKind.timeout => strings.playFailedTimeout,
-    PlaybackFailureKind.unplayable => strings.songCannotPlay,
+    // P6: bila penyebab resolve diketahui, pesannya spesifik per
+    // penyebab (mis. "YouTube mengubah pemutarnya."); bila tidak,
+    // pesan generik lama.
+    PlaybackFailureKind.unplayable => failure.cause == null
+        ? strings.songCannotPlay
+        : causeMessage(strings, failure.cause!),
   };
   if (failure.skippedCount <= 0) return message;
   return '$message ${strings.skippedUnplayable(failure.skippedCount)}';
 }
 
 /// Pesan satu baris untuk mini-player (ruang hanya satu baris teks).
+///
+/// Seperti pesan lengkap: bila penyebab resolve diketahui, jenis gagal
+/// spesifik tampil (varian singkat per penyebab), bukan pesan generik.
+/// Ini yang membuat jenis gagal TERLIHAT di mini-player, bukan hanya di
+/// layar pemutar penuh (tambahan P6 — verdict owner 18:56 WIB).
 String playbackFailureShortMessage(
   AppLocalizations strings,
   PlaybackFailure failure,
@@ -39,6 +50,8 @@ String playbackFailureShortMessage(
   return switch (failure.kind) {
     PlaybackFailureKind.network => strings.playFailedNetworkShort,
     PlaybackFailureKind.timeout => strings.playFailedTimeoutShort,
-    PlaybackFailureKind.unplayable => strings.playFailedCannotPlayShort,
+    PlaybackFailureKind.unplayable => failure.cause == null
+        ? strings.playFailedCannotPlayShort
+        : causeShortMessage(strings, failure.cause!),
   };
 }

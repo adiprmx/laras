@@ -284,6 +284,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                       duration: track.duration,
                                       isCurrent: isCurrent,
                                       isPlaying: isCurrent && snap.playing,
+                                      isUnplayable: view.song.unplayable,
                                       onTap: port == null
                                           ? null
                                           : () => _playFrom(
@@ -454,6 +455,7 @@ class _PickSongsSheetState extends State<_PickSongsSheet> {
                             : view.artistsLabel,
                         artUri: view.toTrack().artUri,
                         duration: view.toTrack().duration,
+                        isUnplayable: view.song.unplayable,
                         trailing: Icon(
                           picked
                               ? Icons.check_circle

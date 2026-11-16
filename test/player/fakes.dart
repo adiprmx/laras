@@ -240,6 +240,9 @@ class FakeAudioResolver implements AudioResolver {
   final List<String> resolveCalls = <String>[];
   final List<ResolveLogEntry> _log = <ResolveLogEntry>[];
 
+  /// Nilai dataSaver tiap panggilan resolve (P6: saklar Hemat data).
+  final List<bool> dataSaverFlags = <bool>[];
+
   @override
   List<ResolveLogEntry> get recentLog =>
       List<ResolveLogEntry>.unmodifiable(_log);
@@ -247,6 +250,7 @@ class FakeAudioResolver implements AudioResolver {
   @override
   Future<ResolvedAudio> resolve(String videoId, {bool dataSaver = false}) async {
     resolveCalls.add(videoId);
+    dataSaverFlags.add(dataSaver);
     if (delay != Duration.zero) await Future<void>.delayed(delay);
     Object? outcome;
     final List<Object>? script = scripted[videoId];

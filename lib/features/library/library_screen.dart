@@ -10,6 +10,8 @@
 /// ini, satu-satunya pintu masuk Pengaturan.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:laras/core/theme/app_colors.dart';
 import 'package:laras/core/theme/app_theme.dart';
@@ -184,6 +186,7 @@ Widget _librarySongRow(
     isCurrent: isCurrent,
     isPlaying: isCurrent && snap.playing,
     isBusy: busy,
+    isUnplayable: view.song.unplayable,
     onTap: port == null
         ? null
         : () => playSongViews(
@@ -274,16 +277,19 @@ class _SongsTabState extends State<_SongsTab> {
               loadPage: (SongView? after) =>
                   service.songsPage(sort: _sort, after: after),
               reloadStream: service.libraryChanged,
-              header: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.md,
-                  AppSpacing.sm,
-                  AppSpacing.md,
-                  AppSpacing.xs,
-                ),
-                child: Row(
-                  children: <Widget>[
-                    PopupMenuButton<SongSort>(
+              header: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.md,
+                      AppSpacing.sm,
+                      AppSpacing.md,
+                      AppSpacing.xs,
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        PopupMenuButton<SongSort>(
                       tooltip: strings.sortBy,
                       onSelected: (SongSort sort) {
                         service.sortPrefs.songSort = sort;
@@ -316,9 +322,14 @@ class _SongsTabState extends State<_SongsTab> {
                           const Icon(Icons.arrow_drop_down, size: 20),
                         ],
                       ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                  // P6 (B4.7): hapus massal lagu yang tidak bisa diputar
+                  // (hanya tampil bila ada lagu bertanda).
+                  _DeleteUnplayableRow(service: service),
+                ],
               ),
               itemBuilder:
                   (
@@ -343,6 +354,98 @@ class _SongsTabState extends State<_SongsTab> {
               emptyBody: strings.libraryEmptyBody,
             );
           },
+    );
+  }
+}
+
+/// Baris hapus massal lagu yang tidak bisa diputar (P6, B4.7).
+///
+/// Hanya tampil bila ada lagu bertanda (bukan unduhan). Jumlah dihitung
+/// ulang setiap kali database berubah. Penghapusan memakai dialog
+/// konfirmasi yang menyebut jumlahnya.
+class _DeleteUnplayableRow extends StatefulWidget {
+  const _DeleteUnplayableRow({required this.service});
+
+  final LibraryService service;
+
+  @override
+  State<_DeleteUnplayableRow> createState() => _DeleteUnplayableRowState();
+}
+
+class _DeleteUnplayableRowState extends State<_DeleteUnplayableRow> {
+  StreamSubscription<void>? _sub;
+  int _count = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+    _sub = widget.service.libraryChanged.listen((_) => _reload());
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _reload() async {
+    final int count = await widget.service.unplayableCount();
+    if (!mounted || count == _count) return;
+    setState(() {
+      _count = count;
+    });
+  }
+
+  Future<void> _confirmDelete() async {
+    final AppLocalizations strings = AppLocalizations.of(context)!;
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text(strings.deleteUnplayableTitle),
+        content: Text(strings.deleteUnplayableBody(_count)),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(strings.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: Text(strings.delete),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final int deleted = await widget.service.deleteUnplayableSongs();
+    await _reload();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(strings.deleteUnplayableDone(deleted))),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_count == 0) return const SizedBox.shrink();
+    final AppLocalizations strings = AppLocalizations.of(context)!;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        0,
+        AppSpacing.md,
+        AppSpacing.xs,
+      ),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: _confirmDelete,
+          icon: const Icon(Icons.delete_outline, size: 20),
+          label: Text(strings.deleteUnplayable),
+          style: TextButton.styleFrom(foregroundColor: AppColors.error),
+        ),
+      ),
     );
   }
 }
@@ -610,6 +713,7 @@ class _HistoryTab extends StatelessWidget {
                       duration: track.duration,
                       isCurrent: isCurrent,
                       isPlaying: isCurrent && snap.playing,
+                      isUnplayable: view.song.unplayable,
                       onTap: port == null
                           ? null
                           : () => playSongViews(

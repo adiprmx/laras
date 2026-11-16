@@ -8,6 +8,8 @@
 ///   (pola standar drift): database v1 diisi data lewat SQL mentah, lalu
 ///   dibuka sebagai [LarasDatabase] sehingga `onUpgrade` ASLI berjalan,
 ///   dan datanya diverifikasi utuh sesudah migrasi.
+/// - Skema v3 (P6): `songs` mendapat kolom `unplayable` (default false)
+///   + indeks `songs_unplayable_idx`.
 library;
 
 import 'package:drift/drift.dart';
@@ -19,7 +21,7 @@ import 'package:laras/data/database.dart';
 import '../schema.dart';
 
 void main() {
-  test('database baru sesuai dengan skema v2 yang diharapkan kode', () async {
+  test('database baru sesuai dengan skema v3 yang diharapkan kode', () async {
     final LarasDatabase db = LarasDatabase(NativeDatabase.memory());
     try {
       // Memicu onCreate (membuat semua tabel + FTS5 + indeks).
@@ -31,9 +33,9 @@ void main() {
     }
   });
 
-  test('schemaVersion adalah 2', () async {
+  test('schemaVersion adalah 3', () async {
     final LarasDatabase db = LarasDatabase(NativeDatabase.memory());
-    expect(db.schemaVersion, 2);
+    expect(db.schemaVersion, 3);
     await db.close();
   });
 
@@ -106,6 +108,97 @@ void main() {
       expect(job.quality, 251);
       expect(job.attempts, 1);
       expect(job.createdAt != null, isTrue);
+    } finally {
+      await db.close();
+    }
+  });
+
+  test('migrasi v2 -> v3 mempertahankan lagu, unplayable default false',
+      () async {
+    final SchemaVerifier verifier = SchemaVerifier(GeneratedHelper());
+    final InitializedSchema schema = await verifier.schemaAt(2);
+    schema.rawDatabase.execute(
+      'INSERT INTO songs (id, title, duration_seconds, liked, '
+      'total_play_time_ms, in_library, date_added, date_modified, '
+      "download_state) VALUES ('song-3', 'Lagu Tiga', 200, 0, 0, 1, "
+      '1792000000, 1792000000, 0)',
+    );
+    final LarasDatabase db = LarasDatabase(schema.newConnection());
+    try {
+      await verifier.migrateAndValidate(db, 3);
+      final Song song = await (db.select(
+        db.songs,
+      )..where((Songs s) => s.id.equals('song-3'))).getSingle();
+      expect(song.title, 'Lagu Tiga');
+      expect(song.durationSeconds, 200);
+      // Lagu lama dianggap bisa diputar sampai terbukti sebaliknya.
+      expect(song.unplayable, isFalse);
+      // Indeks v3 ada.
+      final List<QueryRow> idx = await db
+          .customSelect(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND "
+            "name = 'songs_unplayable_idx'",
+          )
+          .get();
+      expect(idx, hasLength(1));
+    } finally {
+      await db.close();
+    }
+  });
+
+  test('kolom unplayable bisa ditulis sesudah migrasi v2 -> v3', () async {
+    final SchemaVerifier verifier = SchemaVerifier(GeneratedHelper());
+    final DatabaseConnection connection = await verifier.startAt(2);
+    final LarasDatabase db = LarasDatabase(connection);
+    try {
+      await verifier.migrateAndValidate(db, 3);
+      final DateTime now = DateTime.now();
+      await db
+          .into(db.songs)
+          .insert(
+            SongsCompanion.insert(
+              id: 'song-4',
+              title: 'Lagu Empat',
+              dateAdded: now,
+              dateModified: now,
+              unplayable: const Value<bool>(true),
+            ),
+          );
+      final Song song = await (db.select(
+        db.songs,
+      )..where((Songs s) => s.id.equals('song-4'))).getSingle();
+      expect(song.unplayable, isTrue);
+    } finally {
+      await db.close();
+    }
+  });
+
+  test('migrasi v1 -> v3 langsung (loncat versi) tetap benar', () async {
+    final SchemaVerifier verifier = SchemaVerifier(GeneratedHelper());
+    final InitializedSchema schema = await verifier.schemaAt(1);
+    schema.rawDatabase.execute(
+      'INSERT INTO songs (id, title, duration_seconds, liked, '
+      'total_play_time_ms, in_library, date_added, date_modified, '
+      "download_state) VALUES ('song-5', 'Lagu Lima', 150, 0, 0, 1, "
+      '1792000000, 1792000000, 0)',
+    );
+    schema.rawDatabase.execute(
+      'INSERT INTO download_jobs (song_id, status, bytes_downloaded, '
+      "total_bytes, updated_at) VALUES ('song-5', 0, 0, 3000000, "
+      '1792000000)',
+    );
+    final LarasDatabase db = LarasDatabase(schema.newConnection());
+    try {
+      await verifier.migrateAndValidate(db, 3);
+      final Song song = await (db.select(
+        db.songs,
+      )..where((Songs s) => s.id.equals('song-5'))).getSingle();
+      expect(song.unplayable, isFalse);
+      final DownloadJob job = await (db.select(
+        db.downloadJobs,
+      )..where((DownloadJobs j) => j.songId.equals('song-5'))).getSingle();
+      expect(job.attempts, 0);
+      expect(job.quality, null);
     } finally {
       await db.close();
     }

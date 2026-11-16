@@ -84,6 +84,7 @@ class CollectionSongsScreen extends StatelessWidget {
               isCurrent: isCurrent,
               isPlaying: isCurrent && snap.playing,
               isBusy: busy,
+              isUnplayable: view.song.unplayable,
               onTap: port == null
                   ? null
                   : () => playSongViews(

@@ -6,10 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:laras/data/database.dart';
 import 'package:laras/extractor/extractor.dart';
+import 'package:laras/features/onboarding/onboarding_flow.dart';
 import 'package:laras/features/search/search_service.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/main.dart';
 import 'package:laras/player/player.dart';
+import 'package:laras/resilience/honesty_sheet.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/test_database.dart';
 import '../../player/fakes.dart';
@@ -64,6 +67,11 @@ void main() {
   }
 
   Future<AppLocalizations> pumpSearch(WidgetTester tester) async {
+    // Matikan urutan first-run (diuji di first_run_test.dart).
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      kOnboardingShownKey: true,
+      kHonestySheetShownKey: true,
+    });
     await tester.pumpWidget(
       LarasApp(
         playerService: playerService,

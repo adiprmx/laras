@@ -11,6 +11,65 @@ import 'package:flutter/material.dart';
 import 'package:laras/core/theme/app_colors.dart';
 import 'package:laras/core/theme/app_theme.dart';
 
+/// Kerangka muat kartu horizontal: meniru deretan kartu Jelajah (sampul
+/// + judul + keterangan) selagi rak dimuat. Statis seperti [LoadingRows]
+/// (alasan yang sama: `pumpAndSettle()`).
+class LoadingCards extends StatelessWidget {
+  const LoadingCards({super.key, this.count = 3});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 216,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        itemCount: count,
+        separatorBuilder: (BuildContext context, int index) =>
+            const SizedBox(width: AppSpacing.sm),
+        itemBuilder: (BuildContext context, int index) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 140,
+                height: 140,
+                decoration: const BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.all(
+                    Radius.circular(AppRadius.coverLarge),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Container(
+                width: 110,
+                height: 14,
+                decoration: const BoxDecoration(
+                  color: AppColors.pressed,
+                  borderRadius: BorderRadius.all(Radius.circular(4)),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xxs),
+              Container(
+                width: 80,
+                height: 12,
+                decoration: const BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.all(Radius.circular(4)),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
 class LoadingRows extends StatelessWidget {
   const LoadingRows({super.key, this.count = 5});
 

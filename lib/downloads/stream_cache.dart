@@ -42,6 +42,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:laras/data/database.dart';
+import 'package:laras/resilience/connectivity.dart';
 
 import 'download_paths.dart';
 
@@ -100,7 +101,9 @@ class StreamCacheService implements PlaybackCache {
   final LibraryService _library;
   final DownloadPaths _paths;
   final Dio _dio;
-  final int _cacheLimitBytes;
+
+  /// Batas ruang lagu yang pernah diputar (diubah P6 lewat Pengaturan).
+  int _cacheLimitBytes;
 
   /// Benar bila ada unduhan aktif: fetch cache ditunda supaya tidak
   /// berebut bandwidth dengan unduhan yang diminta pengguna.
@@ -129,6 +132,20 @@ class StreamCacheService implements PlaybackCache {
 
   /// Batas cache saat ini (byte).
   int get cacheLimitBytes => _cacheLimitBytes;
+
+  /// Ubah batas ruang lagu yang pernah diputar (P6, B8.3). Bila isi
+  /// sekarang melebihi batas baru, eviction LRU langsung berjalan.
+  Future<void> setCacheLimitBytes(int bytes) async {
+    _cacheLimitBytes = bytes;
+    await evictIfNeeded();
+  }
+
+  /// Gerbang WiFi (P6, B8.4): fetch cache tertunda saat saklar WiFi saja
+  /// aktif dan HP tidak di WiFi. Fetch yang SUDAH berjalan saat WiFi
+  /// hilang dibiarkan selesai (keterbatasan yang dicatat: membatalkan
+  /// fetch cache di tengah jalan berisiko merusak `.part` yang sedang
+  /// ditulis).
+  WifiGate? wifiGate;
 
   @override
   Future<File?> fileFor(String videoId) async {
@@ -183,6 +200,10 @@ class StreamCacheService implements PlaybackCache {
     if (_fetchingKey != null) return;
     if (_pending.isEmpty) return;
     if (_isBusy?.call() ?? false) return;
+    // P6 (B8.4): gerbang WiFi dicek SEBELUM mengambil entri dari
+    // antrean — bila dicek sesudahnya, entri yang sudah diambil hilang.
+    final WifiGate? gate = wifiGate;
+    if (gate != null && !await gate.mayDownload) return;
     final MapEntry<String, (String, int, String)> next = _pending.entries.first;
     _pending.remove(next.key);
     final String videoId = next.key;

@@ -30,6 +30,10 @@ abstract final class AppRadius {
   static const double coverLarge = 12;
   static const double card = 12;
 
+  /// Kartu hero beranda dan kartu playlist: satu tingkat di atas kartu
+  /// biasa supaya titik fokus layar terbaca.
+  static const double heroCard = 16;
+
   /// Sudut atas bottom sheet, semua sudut dialog.
   static const double sheet = 16;
   static const double dialog = 16;
@@ -54,6 +58,12 @@ abstract final class AppSizes {
 
   /// Tombol putar utama di Now Playing, di dalam area sentuh 72 dp.
   static const double playButton = 72;
+
+  /// Tombol putar di kartu hero beranda (lingkaran visual 56 dp).
+  static const double playButtonHero = 56;
+
+  /// Sampul di kartu hero beranda.
+  static const double heroCover = 120;
 
   /// Ikon aksi di baris dan app bar.
   static const double icon = 24;
