@@ -13,6 +13,7 @@
 /// `import 'package:laras/data/database.dart';`
 library;
 
+export 'backup_format.dart';
 export 'database_connection.dart';
 export 'laras_database.dart';
 export 'library_scope.dart';

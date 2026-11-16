@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P8: FileProvider hanya untuk berbagi file salinan (backup JSON)
+     lewat lembar berbagi Android. Hanya direktori cache yang
+     diekspos — file salinan ditulis Dart ke getTemporaryDirectory()
+     (= cacheDir) sebelum dibagikan. Tidak ada file lain yang bisa
+     dibagikan lewat provider ini. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="backup" path="." />
+</paths>

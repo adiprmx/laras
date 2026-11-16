@@ -10,10 +10,15 @@ import android.net.NetworkRequest
 import android.net.Uri
 import android.os.Build
 import android.os.StatFs
+import android.provider.OpenableColumns
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
+import java.io.File
 
 class MainActivity : AudioServiceActivity() {
     private val storageChannel = "id.my.adipmusic.laras/storage"
@@ -23,6 +28,40 @@ class MainActivity : AudioServiceActivity() {
     private val externalChannel = "id.my.adipmusic.laras/external"
     private val deepLinkChannel = "id.my.adipmusic.laras/deep_link"
     private val equalizerChannel = "id.my.adipmusic.laras/equalizer"
+    private val backupFilesChannel = "id.my.adipmusic.laras/backup_files"
+
+    // P8: pemilih file salinan (SAF OpenDocument). Satu pemilihan pada
+    // satu waktu: panggilan kedua saat pemilihan berjalan dijawab BUSY.
+    // Batas baca 10.000.001 byte (1 byte di atas batas Dart 10 MB):
+    // file yang lebih besar dijawab TOO_LARGE sebelum seluruh isinya
+    // dibaca ke memori.
+    private var pendingPickResult: MethodChannel.Result? = null
+    private val pickFileLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            val result = pendingPickResult
+            pendingPickResult = null
+            if (result == null) return@registerForActivityResult
+            if (uri == null) {
+                // Pengguna membatalkan pemilih dokumen.
+                result.success(null)
+                return@registerForActivityResult
+            }
+            try {
+                val name = queryDisplayName(uri)
+                val bytes = readCappedBytes(uri, 10_000_001L)
+                if (bytes == null) {
+                    result.error(
+                        "TOO_LARGE",
+                        "file lebih besar dari 10 MB",
+                        null,
+                    )
+                } else {
+                    result.success(mapOf("bytes" to bytes, "name" to name))
+                }
+            } catch (e: Exception) {
+                result.error("READ_FAILED", e.message, null)
+            }
+        }
 
     // P7 (MUST #13): tautan dalam. Sink EventChannel + tautan yang tiba
     // sebelum Dart mendengarkan (cold start / onNewIntent lebih dulu).
@@ -332,6 +371,74 @@ class MainActivity : AudioServiceActivity() {
                 else -> result.notImplemented()
             }
         }
+        // P8: berbagi + memilih file salinan (backup JSON).
+        // - shareFile: ACTION_SEND lewat FileProvider (hanya file di
+        //   direktori cache; di luar itu getUriForFile melempar).
+        //   Pembatalan pemilih berbagi TIDAK terdeteksi Android, jadi
+        //   sukses berarti lembar berbagi berhasil dibuka.
+        // - pickFile: SAF OpenDocument (tanpa izin penyimpanan), isi
+        //   dibaca lewat ContentResolver dengan batas 10 MB.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            backupFilesChannel,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "shareFile" -> {
+                    val path = call.argument<String>("path")
+                    val name = call.argument<String>("fileName").orEmpty()
+                    if (path.isNullOrEmpty()) {
+                        result.error("BAD_PATH", "path kosong", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val file = File(path)
+                        if (!file.exists()) {
+                            result.error("NOT_FOUND", "file tidak ada", null)
+                            return@setMethodCallHandler
+                        }
+                        val uri = FileProvider.getUriForFile(
+                            this,
+                            "$packageName.fileprovider",
+                            file,
+                        )
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/json"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            putExtra(Intent.EXTRA_SUBJECT, name)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        startActivity(Intent.createChooser(intent, name))
+                        result.success(true)
+                    } catch (e: IllegalArgumentException) {
+                        // File di luar direktori cache (bukan dari
+                        // getTemporaryDirectory): tolak.
+                        result.error("BAD_PATH", e.message, null)
+                    } catch (e: Exception) {
+                        result.error("SHARE_FAILED", e.message, null)
+                    }
+                }
+                "pickFile" -> {
+                    if (pendingPickResult != null) {
+                        result.error(
+                            "BUSY",
+                            "pemilihan file sedang berjalan",
+                            null,
+                        )
+                        return@setMethodCallHandler
+                    }
+                    pendingPickResult = result
+                    try {
+                        pickFileLauncher.launch(
+                            arrayOf("application/json", "text/*"),
+                        )
+                    } catch (e: Exception) {
+                        pendingPickResult = null
+                        result.error("PICK_FAILED", e.message, null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     private fun isWifi(connectivityManager: ConnectivityManager): Boolean {
@@ -339,5 +446,46 @@ class MainActivity : AudioServiceActivity() {
         val capabilities =
             connectivityManager.getNetworkCapabilities(network) ?: return false
         return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+    }
+
+    // P8: nama tampil dokumen dari SAF (OpenableColumns.DISPLAY_NAME).
+    private fun queryDisplayName(uri: Uri): String {
+        contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) {
+                    return cursor.getString(index) ?: "file"
+                }
+            }
+        }
+        return "file"
+    }
+
+    // P8: baca isi dokumen dengan batas byte. Mengembalikan null bila
+    // ukuran melebihi [cap] (pembacaan dihentikan, bukan seluruh file
+    // dimuat ke memori). Stream yang tidak bisa dibuka melempar
+    // (pemanggil menjawab READ_FAILED).
+    private fun readCappedBytes(uri: Uri, cap: Long): ByteArray? {
+        val out = ByteArrayOutputStream()
+        val input = contentResolver.openInputStream(uri)
+            ?: throw IllegalStateException("tidak bisa membuka dokumen")
+        input.use {
+            val buffer = ByteArray(8192)
+            var total = 0L
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                total += read
+                if (total > cap) return null
+                out.write(buffer, 0, read)
+            }
+        }
+        return out.toByteArray()
     }
 }

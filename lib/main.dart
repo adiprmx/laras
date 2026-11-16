@@ -7,6 +7,7 @@ import 'package:laras/core/theme/app_theme.dart';
 import 'package:laras/data/database.dart';
 import 'package:laras/downloads/downloads.dart';
 import 'package:laras/extractor/extractor.dart';
+import 'package:laras/features/backup/backup.dart';
 import 'package:laras/features/downloads/downloads_screen.dart';
 import 'package:laras/features/home/home_screen.dart';
 import 'package:laras/features/library/library_screen.dart';
@@ -82,6 +83,8 @@ Future<void> main() async {
   DownloadService? downloadService;
   StreamCacheService? streamCache;
   DataWipeService? dataWipe;
+  BackupService? backupService;
+  SpotifyImportService? spotifyImportService;
   try {
     final LarasDatabase db = await openLarasDatabase();
     libraryService = LibraryService(
@@ -162,6 +165,27 @@ Future<void> main() async {
       onStopDownloads: downloads.dispose,
       onCloseDatabase: db.close,
     );
+    // P8: salinan data + impor Spotify. Hanya bila database berhasil
+    // dibuka; bila gagal, baris Pengaturan disembunyikan. Impor
+    // pengaturan menerapkan ulang kualitas unduhan + batas cache ke
+    // layanan yang sedang jalan.
+    backupService = BackupService(
+      library: libraryService,
+      settings: settings,
+      prefs: prefs,
+      files: BackupFileChannel(),
+      onSettingsApplied: (_) {
+        downloads.defaultQuality =
+            _qualityFromString(settings.defaultQuality.value);
+        unawaited(
+          cache.setCacheLimitBytes(settings.cacheLimitBytes.value),
+        );
+      },
+    );
+    spotifyImportService = SpotifyImportService(
+      library: libraryService,
+      api: InnertubeSearchApi(),
+    );
     // Rekonsiliasi di latar (tidak memblokir startup): sinkronkan
     // tabel job dengan file yang benar-benar ada, lalu jalankan
     // antrean (job yang tertinggal dari sesi sebelumnya dilanjutkan).
@@ -215,6 +239,8 @@ Future<void> main() async {
       wifiGate: wifiGate,
       externalLinks: externalLinks,
       dataWipe: dataWipe,
+      backupService: backupService,
+      spotifyImportService: spotifyImportService,
       lyricsService: lyricsService,
       deepLinkService: deepLinkService,
     ),
@@ -278,6 +304,8 @@ class LarasApp extends StatelessWidget {
     this.wifiGate,
     this.externalLinks,
     this.dataWipe,
+    this.backupService,
+    this.spotifyImportService,
     this.lyricsService,
     this.deepLinkService,
   });
@@ -299,6 +327,12 @@ class LarasApp extends StatelessWidget {
   final WifiGate? wifiGate;
   final ExternalLinks? externalLinks;
   final DataWipeService? dataWipe;
+
+  /// Layanan salinan data + impor Spotify (P8), null bila database
+  /// gagal dibuka atau app dipompa di widget test tanpa service:
+  /// baris Salinan data disembunyikan, bukan crash.
+  final BackupService? backupService;
+  final SpotifyImportService? spotifyImportService;
 
   /// Layanan lirik (P7), null bila app dipompa di widget test tanpa
   /// service: tombol lirik disembunyikan, bukan crash.
@@ -347,6 +381,11 @@ class LarasApp extends StatelessWidget {
       wifiGate: wifiGate,
       externalLinks: externalLinks,
       dataWipe: dataWipe,
+      child: app,
+    );
+    app = BackupScope(
+      backup: backupService,
+      spotify: spotifyImportService,
       child: app,
     );
     if (service == null) return app;

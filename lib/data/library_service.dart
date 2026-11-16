@@ -24,6 +24,7 @@ import 'package:drift/drift.dart';
 import 'package:drift/extensions/fts5.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'backup_format.dart';
 import 'laras_database.dart';
 import 'tables.dart';
 
@@ -253,7 +254,112 @@ String localArtistIdForName(String name) {
   return 'local-${hash.toRadixString(16).padLeft(16, '0')}';
 }
 
-/// Preferensi sortir daftar lagu, disimpan di SharedPreferences.
+/// Snapshot seluruh data yang masuk file salinan (P8).
+///
+/// Dibangun satu kali saat ekspor; [BackupService] mengubahnya menjadi
+/// [BackupData]. Daftar lagu memakai [SongView] (judul + nama artis),
+/// sementara [songArtists] membawa id artis per lagu sesuai urutan
+/// (untuk pemetaan artis yang setia, termasuk channelId YTM).
+class BackupSnapshot {
+  const BackupSnapshot({
+    required this.songs,
+    required this.songArtists,
+    required this.albums,
+    required this.artists,
+    required this.playlists,
+    required this.playEvents,
+    required this.searchHistory,
+    required this.queueItems,
+    required this.playbackState,
+  });
+
+  /// Semua lagu yang dikenal app (bukan hanya Library: lagu yang pernah
+  /// diputar tapi belum disimpan ikut, supaya riwayat dan antrean yang
+  /// menunjuknya tetap valid sesudah impor).
+  final List<SongView> songs;
+
+  /// Artis per lagu, sesuai urutan (artis utama dulu).
+  final Map<String, List<BackupArtistRef>> songArtists;
+
+  final List<Album> albums;
+  final List<Artist> artists;
+
+  /// Playlist beserta id lagu anggotanya, sesuai urutan posisi.
+  final List<(Playlist playlist, List<String> songIds)> playlists;
+
+  final List<PlayEvent> playEvents;
+  final List<SearchHistoryData> searchHistory;
+  final List<QueueItem> queueItems;
+
+  /// Status pemutar terakhir (satu baris, id 1), atau null.
+  final PlaybackStateData? playbackState;
+}
+
+/// Hitungan hasil merge impor backup (P8), per jenis data.
+class BackupMergeResult {
+  const BackupMergeResult({
+    required this.songsAdded,
+    required this.songsExisted,
+    required this.playlistsCreated,
+    required this.playlistSongsAdded,
+    required this.playlistSongsExisted,
+    required this.eventsAdded,
+    required this.eventsExisted,
+    required this.queriesAdded,
+    required this.queriesExisted,
+    required this.queueAdded,
+    required this.queueExisted,
+    required this.queueSkippedFull,
+    this.queueSkippedSongIds = const <String>[],
+    required this.downloadedSongIds,
+    required this.playbackStateRestored,
+  });
+
+  final int songsAdded;
+  final int songsExisted;
+  final int playlistsCreated;
+  final int playlistSongsAdded;
+  final int playlistSongsExisted;
+  final int eventsAdded;
+  final int eventsExisted;
+  final int queriesAdded;
+  final int queriesExisted;
+  final int queueAdded;
+  final int queueExisted;
+
+  /// Item antrean backup yang tidak masuk karena antrean sudah penuh
+  /// (200 item).
+  final int queueSkippedFull;
+
+  /// Id lagu antrean yang tidak masuk karena antrean penuh (untuk
+  /// laporan hasil impor).
+  final List<String> queueSkippedSongIds;
+
+  /// Id lagu yang dulu terunduh (menurut file) tapi belum terunduh di
+  /// HP ini — penggerak tombol "Unduh ulang" (PRD B7.5).
+  final List<String> downloadedSongIds;
+
+  /// True bila posisi pemutar dari file dipulihkan (hanya bila antrean
+  /// HP tujuan kosong sebelum impor).
+  final bool playbackStateRestored;
+
+  /// Jumlah item baru yang masuk (untuk angka "berhasil" di laporan).
+  int get totalAdded =>
+      songsAdded +
+      playlistsCreated +
+      playlistSongsAdded +
+      eventsAdded +
+      queriesAdded +
+      queueAdded;
+
+  /// Jumlah item yang dilewati karena sudah ada.
+  int get totalExisted =>
+      songsExisted +
+      playlistSongsExisted +
+      eventsExisted +
+      queriesExisted +
+      queueExisted;
+}
 ///
 /// Nilai yang disimpan hanya nama enum (string pendek), sesuai aturan
 /// shared_preferences hanya untuk nilai primitif kecil. Bila [prefs]
@@ -2324,5 +2430,487 @@ class LibraryService {
       playedSongsCount: playedSongsCount,
       playedSongsBytes: cacheRow.read<int>('s'),
     );
+  }
+
+  // ------------------------------------------------------------------
+  // Backup dan impor (P8)
+  // ------------------------------------------------------------------
+
+  /// Snapshot seluruh data untuk ekspor backup.
+  ///
+  /// Satu kali baca per tabel (tanpa N+1): lagu + artisnya, album,
+  /// artis, playlist + anggotanya, riwayat putar, riwayat pencarian,
+  /// antrean, dan status pemutar. Lagu yang diekspor adalah SEMUA lagu
+  /// yang dikenal app (bukan hanya Library), supaya riwayat putar dan
+  /// antrean yang menunjuk lagu yang belum disimpan tetap valid
+  /// sesudah impor di HP baru.
+  Future<BackupSnapshot> backupSnapshot() async {
+    final List<Song> songs = await db.select(db.songs).get();
+    final List<SongView> views = await _attachArtists(songs);
+    final List<SongArtist> mappings = await db.select(db.songArtists).get();
+    final List<Artist> artists = await db.select(db.artists).get();
+    final Map<String, String> artistNames = <String, String>{
+      for (final Artist a in artists) a.id: a.name,
+    };
+    final Map<String, List<(int, BackupArtistRef)>> grouped =
+        <String, List<(int, BackupArtistRef)>>{};
+    for (final SongArtist m in mappings) {
+      final String? name = artistNames[m.artistId];
+      if (name == null) continue;
+      grouped
+          .putIfAbsent(m.songId, () => <(int, BackupArtistRef)>[])
+          .add((m.position, BackupArtistRef(id: m.artistId, name: name)));
+    }
+    final Map<String, List<BackupArtistRef>> songArtists =
+        <String, List<BackupArtistRef>>{};
+    for (final MapEntry<String, List<(int, BackupArtistRef)>> entry
+        in grouped.entries) {
+      entry.value.sort(
+        ((int, BackupArtistRef) a, (int, BackupArtistRef) b) =>
+            a.$1.compareTo(b.$1),
+      );
+      songArtists[entry.key] = entry.value
+          .map(((int, BackupArtistRef) e) => e.$2)
+          .toList(growable: false);
+    }
+    final List<Album> albums = await db.select(db.albums).get();
+    final List<Playlist> playlists = await db.select(db.playlists).get();
+    final List<PlaylistSong> members =
+        await (db.select(db.playlistSongs)
+              ..orderBy(<OrderingTerm Function(PlaylistSongs)>[
+                (PlaylistSongs p) => OrderingTerm(expression: p.playlistId),
+                (PlaylistSongs p) => OrderingTerm(expression: p.position),
+              ]))
+            .get();
+    final Map<int, List<String>> membersByPlaylist = <int, List<String>>{};
+    for (final PlaylistSong m in members) {
+      membersByPlaylist
+          .putIfAbsent(m.playlistId, () => <String>[])
+          .add(m.songId);
+    }
+    final List<PlayEvent> playEvents =
+        await (db.select(db.playEvents)
+              ..orderBy(<OrderingTerm Function(PlayEvents)>[
+                (PlayEvents e) => OrderingTerm(expression: e.timestamp),
+                (PlayEvents e) => OrderingTerm(expression: e.id),
+              ]))
+            .get();
+    final List<SearchHistoryData> searchHistory = await db
+        .select(db.searchHistory)
+        .get();
+    final List<QueueItem> queueItems = await loadQueue();
+    final PlaybackStateData? playbackState = await loadPlaybackState();
+    return BackupSnapshot(
+      songs: views,
+      songArtists: songArtists,
+      albums: albums,
+      artists: artists,
+      playlists: playlists
+          .map(
+            (Playlist p) => (
+              p,
+              membersByPlaylist[p.id] ?? const <String>[],
+            ),
+          )
+          .toList(growable: false),
+      playEvents: playEvents,
+      searchHistory: searchHistory,
+      queueItems: queueItems,
+      playbackState: playbackState,
+    );
+  }
+
+  /// Gabungkan isi file salinan ke database dalam SATU transaksi
+  /// (PRD B7.2/B10.3): gagal di tengah berarti TIDAK ADA yang berubah.
+  ///
+  /// Aturan merge (B4.8 menang atas B10.3 soal nama playlist):
+  /// - Lagu: dicocokkan berdasarkan id. Lagu baru disisip dengan nilai
+  ///   dari file (favorit, total waktu putar, tanggal tambah). Lagu yang
+  ///   sudah ada hanya diperbarui metadata-nya (judul, album, durasi,
+  ///   sampul); favorit dan total waktu putar TIDAK PERNAH diturunkan
+  ///   (favorit dari file hanya bisa menambah, bukan mencabut), dan
+  ///   status unduhan tidak disentuh. Artis lagu yang sudah ada tidak
+  ///   ditulis ulang (database lokal adalah otoritasnya).
+  /// - Album dan artis: disisip bila belum ada (berdasarkan id).
+  /// - Playlist: dicocokkan berdasarkan NAMA persis. Nama sama berarti
+  ///   lagunya yang belum ada ditambahkan ke playlist yang sama (BUKAN
+  ///   membuat salinan "(salinan)"); nama baru berarti playlist baru.
+  ///   Nama dipotong ke batas PRD (100 karakter) dan deskripsi ke 500
+  ///   karakter bila file membawanya lebih panjang.
+  /// - Riwayat putar: dedup (lagu, detik putar, durasi); batas 10.000
+  ///   entri tetap ditegakkan (yang tertua dihapus).
+  /// - Riwayat pencarian: dedup query tanpa membedakan kapitalisasi;
+  ///   batas 100 query tetap ditegakkan.
+  /// - Antrean: ditambahkan di BELAKANG antrean yang ada (bukan
+  ///   menimpa); duplikat videoId dilewati; total dibatasi 200 item.
+  /// - Posisi pemutar: dipulihkan hanya bila antrean HP tujuan kosong
+  ///   sebelum impor.
+  /// - Lagu yang dulu terunduh (menurut file) TIDAK ditandai terunduh
+  ///   di sini — filenya tidak ada di HP ini. Id-nya dikembalikan di
+  ///   [BackupMergeResult.downloadedSongIds] untuk tombol "Unduh ulang".
+  ///
+  /// [data] WAJIB sudah lewat [BackupData.parseText] (tervalidasi +
+  /// termigrasi). Pemanggil TIDAK boleh membangun [BackupData] dari
+  /// JSON mentah tanpa validasi — referensi yang putus akan menggagalkan
+  /// transaksi lewat foreign key (yang juga membuktikan atomicity).
+  Future<BackupMergeResult> mergeBackupData(BackupData data) async {
+    return db.transaction(() async {
+      final DateTime now = DateTime.now();
+      int songsAdded = 0;
+      int songsExisted = 0;
+      int playlistsCreated = 0;
+      int playlistSongsAdded = 0;
+      int playlistSongsExisted = 0;
+      int eventsAdded = 0;
+      int eventsExisted = 0;
+      int queriesAdded = 0;
+      int queriesExisted = 0;
+      int queueAdded = 0;
+      int queueExisted = 0;
+      int queueSkippedFull = 0;
+
+      // Album + artis dulu (lagu menunjuk album lewat FK).
+      for (final BackupAlbum album in data.albums) {
+        await db
+            .into(db.albums)
+            .insert(
+              AlbumsCompanion.insert(
+                id: album.id,
+                title: album.title,
+                year: Value<int?>(album.year),
+                thumbnailUrl: Value<String?>(album.thumbnailUrl),
+                liked: Value<bool>(album.liked),
+                dateAdded: album.dateAdded ?? now,
+              ),
+              mode: InsertMode.insertOrIgnore,
+            );
+      }
+      for (final BackupArtist artist in data.artists) {
+        await db
+            .into(db.artists)
+            .insert(
+              ArtistsCompanion.insert(
+                id: artist.id,
+                name: artist.name,
+                thumbnailUrl: Value<String?>(artist.thumbnailUrl),
+                liked: Value<bool>(artist.liked),
+                dateAdded: artist.dateAdded ?? now,
+              ),
+              mode: InsertMode.insertOrIgnore,
+            );
+      }
+
+      // Lagu: satu baca untuk seluruh tabel supaya merge 10.000 lagu
+      // tidak memakai N+1 query.
+      final List<Song> existingRows = await db.select(db.songs).get();
+      final Map<String, Song> existingById = <String, Song>{
+        for (final Song s in existingRows) s.id: s,
+      };
+      final List<String> downloadedSongIds = <String>[];
+      for (final BackupSong song in data.songs) {
+        final Song? existing = existingById[song.id];
+        if (existing == null) {
+          await db
+              .into(db.songs)
+              .insert(
+                SongsCompanion.insert(
+                  id: song.id,
+                  title: song.title,
+                  albumId: Value<String?>(song.albumId),
+                  durationSeconds: Value<int?>(song.durationSeconds),
+                  thumbnailUrl: Value<String?>(song.thumbnailUrl),
+                  liked: Value<bool>(song.liked),
+                  totalPlayTimeMs: Value<int>(song.totalPlayTimeMs),
+                  inLibrary: Value<bool>(song.inLibrary),
+                  dateAdded: song.dateAdded ?? now,
+                  dateModified: now,
+                  // Status unduhan selalu 0 untuk lagu baru: file audio
+                  // tidak ikut di file salinan (PRD B7.4).
+                  downloadState: const Value<int>(
+                    DownloadState.notDownloaded,
+                  ),
+                  unplayable: Value<bool>(song.unplayable),
+                ),
+              );
+          final List<String> names = song.artists
+              .map((BackupArtistRef a) => a.name)
+              .toList(growable: false);
+          final List<String?> channelIds = song.artists
+              .map((BackupArtistRef a) => a.id)
+              .toList(growable: false);
+          await _replaceSongArtists(
+            song.id,
+            names,
+            channelIds: channelIds,
+            now: now,
+          );
+          await _syncSongFts(song.id, title: song.title, artistNames: names);
+          songsAdded++;
+        } else {
+          songsExisted++;
+          // Metadata diperbarui; favorit/inLibrary hanya bisa naik
+          // (tidak pernah mencabut yang sudah ada).
+          await (db.update(
+            db.songs,
+          )..where((Songs s) => s.id.equals(song.id))).write(
+            SongsCompanion(
+              title: Value<String>(song.title),
+              albumId: Value<String?>(song.albumId),
+              durationSeconds: Value<int?>(song.durationSeconds),
+              thumbnailUrl: Value<String?>(song.thumbnailUrl),
+              liked: song.liked && !existing.liked
+                  ? const Value<bool>(true)
+                  : const Value<bool>.absent(),
+              inLibrary: song.inLibrary && !existing.inLibrary
+                  ? const Value<bool>(true)
+                  : const Value<bool>.absent(),
+              dateModified: Value<DateTime>(now),
+            ),
+          );
+        }
+        if (song.downloaded) {
+          final Song? after = existingById[song.id];
+          final bool alreadyDownloaded =
+              after != null &&
+              after.downloadState == DownloadState.downloaded;
+          if (!alreadyDownloaded) downloadedSongIds.add(song.id);
+        }
+      }
+
+      // Playlist: cocokkan berdasarkan nama persis (B4.8).
+      final List<Playlist> existingPlaylists = await db
+          .select(db.playlists)
+          .get();
+      final Map<String, Playlist> byName = <String, Playlist>{};
+      for (final Playlist p in existingPlaylists) {
+        byName.putIfAbsent(p.name, () => p);
+      }
+      for (final BackupPlaylist bp in data.playlists) {
+        final String name = bp.name.trim();
+        if (name.isEmpty) continue;
+        final String safeName = name.length > kMaxPlaylistNameLength
+            ? name.substring(0, kMaxPlaylistNameLength)
+            : name;
+        final String? safeDescription =
+            bp.description == null ||
+                bp.description!.trim().length <=
+                    kMaxPlaylistDescriptionLength
+            ? bp.description?.trim()
+            : bp.description!
+                  .trim()
+                  .substring(0, kMaxPlaylistDescriptionLength);
+        Playlist target;
+        final Playlist? found = byName[safeName];
+        if (found == null) {
+          final int id = await db
+              .into(db.playlists)
+              .insert(
+                PlaylistsCompanion.insert(
+                  name: safeName,
+                  description: Value<String?>(safeDescription),
+                  createdAt: bp.createdAt ?? now,
+                  updatedAt: now,
+                ),
+              );
+          target = Playlist(
+            id: id,
+            name: safeName,
+            description: safeDescription,
+            createdAt: bp.createdAt ?? now,
+            updatedAt: now,
+          );
+          byName[safeName] = target;
+          playlistsCreated++;
+        } else {
+          target = found;
+        }
+        final List<PlaylistSong> members =
+            await (db.select(db.playlistSongs)..where(
+                  (PlaylistSongs p) => p.playlistId.equals(target.id),
+                ))
+                .get();
+        final Set<String> memberIds = members
+            .map((PlaylistSong m) => m.songId)
+            .toSet();
+        int position = await _nextPlaylistPosition(target.id);
+        for (final String songId in bp.songIds) {
+          if (memberIds.contains(songId)) {
+            playlistSongsExisted++;
+            continue;
+          }
+          await db
+              .into(db.playlistSongs)
+              .insert(
+                PlaylistSongsCompanion.insert(
+                  playlistId: target.id,
+                  songId: songId,
+                  position: position,
+                  dateAdded: now,
+                ),
+              );
+          memberIds.add(songId);
+          position++;
+          playlistSongsAdded++;
+          await (db.update(
+            db.songs,
+          )..where((Songs s) => s.id.equals(songId))).write(
+            const SongsCompanion(inLibrary: Value<bool>(true)),
+          );
+        }
+        await _touchPlaylist(target.id, now);
+      }
+
+      // Riwayat putar: dedup (lagu, detik, durasi). Drift menyimpan
+      // DateTime sebagai detik, jadi perbandingan memakai detik.
+      final List<PlayEvent> existingEvents = await db
+          .select(db.playEvents)
+          .get();
+      final Set<String> eventKeys = <String>{
+        for (final PlayEvent e in existingEvents)
+          '${e.songId}|${e.timestamp.millisecondsSinceEpoch ~/ 1000}|${e.playTimeMs}',
+      };
+      for (final BackupPlayEvent event in data.playEvents) {
+        final String key =
+            '${event.songId}|${event.timestamp.millisecondsSinceEpoch ~/ 1000}|${event.playTimeMs}';
+        if (eventKeys.contains(key)) {
+          eventsExisted++;
+          continue;
+        }
+        await db
+            .into(db.playEvents)
+            .insert(
+              PlayEventsCompanion.insert(
+                songId: event.songId,
+                timestamp: event.timestamp,
+                playTimeMs: event.playTimeMs,
+              ),
+            );
+        eventKeys.add(key);
+        eventsAdded++;
+      }
+      final int eventCount = await _count(
+        'SELECT COUNT(*) AS c FROM play_events',
+      );
+      if (eventCount > kMaxPlayEvents) {
+        final int excess = eventCount - kMaxPlayEvents;
+        await db.customStatement(
+          'DELETE FROM play_events WHERE id IN ('
+          'SELECT id FROM play_events ORDER BY timestamp ASC, id ASC '
+          'LIMIT ?)',
+          <Object>[excess],
+        );
+      }
+
+      // Riwayat pencarian: dedup tanpa membedakan kapitalisasi.
+      final List<SearchHistoryData> existingQueries = await db
+          .select(db.searchHistory)
+          .get();
+      final Set<String> queryKeys = <String>{
+        for (final SearchHistoryData q in existingQueries)
+          q.query.toLowerCase(),
+      };
+      for (final BackupSearchQuery q in data.searchHistory) {
+        if (queryKeys.contains(q.query.toLowerCase())) {
+          queriesExisted++;
+          continue;
+        }
+        await db
+            .into(db.searchHistory)
+            .insert(
+              SearchHistoryCompanion.insert(
+                query: q.query,
+                timestamp: q.timestamp,
+              ),
+            );
+        queryKeys.add(q.query.toLowerCase());
+        queriesAdded++;
+      }
+      final int queryCount = await _count(
+        'SELECT COUNT(*) AS c FROM search_history',
+      );
+      if (queryCount > kMaxSearchHistory) {
+        final int excess = queryCount - kMaxSearchHistory;
+        await db.customStatement(
+          'DELETE FROM search_history WHERE query IN ('
+          'SELECT query FROM search_history '
+          'ORDER BY timestamp ASC, rowid ASC LIMIT ?)',
+          <Object>[excess],
+        );
+      }
+
+      // Antrean: ditambahkan di belakang antrean yang ada.
+      final List<QueueItem> existingQueue = await loadQueue();
+      final Set<String> queuedIds = existingQueue
+          .map((QueueItem q) => q.songId)
+          .toSet();
+      final List<String> queueSkippedSongIds = <String>[];
+      int position = existingQueue.isEmpty
+          ? 0
+          : existingQueue.last.position + 1;
+      for (final BackupQueueItem item in data.queue) {
+        if (queuedIds.contains(item.songId)) {
+          queueExisted++;
+          continue;
+        }
+        if (position >= kMaxBackupQueueItems) {
+          queueSkippedFull++;
+          queueSkippedSongIds.add(item.songId);
+          continue;
+        }
+        await db
+            .into(db.queueItems)
+            .insert(
+              QueueItemsCompanion.insert(
+                position: Value<int>(position),
+                songId: item.songId,
+                source: Value<String?>(item.source),
+              ),
+            );
+        queuedIds.add(item.songId);
+        position++;
+        queueAdded++;
+      }
+
+      // Posisi pemutar: hanya bila antrean tujuan kosong sebelum impor
+      // (dan file membawa antrean — posisi tanpa antrean tidak berarti).
+      bool playbackStateRestored = false;
+      final BackupPlaybackState? ps = data.playbackState;
+      if (existingQueue.isEmpty && ps != null && position > 0) {
+        await db
+            .into(db.playbackState)
+            .insert(
+              PlaybackStateCompanion.insert(
+                id: const Value<int>(1),
+                currentIndex: Value<int>(
+                  ps.currentIndex.clamp(0, position - 1),
+                ),
+                positionMs: Value<int>(ps.positionMs),
+                shuffleEnabled: Value<bool>(ps.shuffleEnabled),
+                repeatMode: Value<int>(ps.repeatMode),
+                updatedAt: now,
+              ),
+              mode: InsertMode.insertOrReplace,
+            );
+        playbackStateRestored = true;
+      }
+
+      return BackupMergeResult(
+        songsAdded: songsAdded,
+        songsExisted: songsExisted,
+        playlistsCreated: playlistsCreated,
+        playlistSongsAdded: playlistSongsAdded,
+        playlistSongsExisted: playlistSongsExisted,
+        eventsAdded: eventsAdded,
+        eventsExisted: eventsExisted,
+        queriesAdded: queriesAdded,
+        queriesExisted: queriesExisted,
+        queueAdded: queueAdded,
+        queueExisted: queueExisted,
+        queueSkippedFull: queueSkippedFull,
+        queueSkippedSongIds: queueSkippedSongIds,
+        downloadedSongIds: downloadedSongIds,
+        playbackStateRestored: playbackStateRestored,
+      );
+    });
   }
 }

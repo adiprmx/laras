@@ -5,15 +5,15 @@
 /// 1. hentikan unduhan ([onStopDownloads]);
 /// 2. tutup database ([onCloseDatabase]);
 /// 3. hapus file database (`laras.sqlite`, `-wal`, `-shm`);
-/// 4. hapus direktori unduhan dan ruang lagu yang pernah diputar
+/// 4. hapus file log internal yatim `laras-internal.log` bila masih ada
+///    (instalasi lama; InternalLog dihapus Blue 3) — P8 residu;
+/// 5. hapus direktori unduhan dan ruang lagu yang pernah diputar
 ///    (rekursif);
-/// 5. hapus isi direktori temp;
-/// 6. hapus SELURUH preferensi ([SharedPreferences.clear]).
+/// 6. hapus isi direktori temp;
+/// 7. hapus SELURUH preferensi ([SharedPreferences.clear]).
 ///
-/// CATATAN P8: tombol "Simpan salinan dulu" di dialog konfirmasi pertama
-/// adalah tugas P8 (backup belum ada di P6; tombol mati dilarang).
-/// P8 menambahkan tombol itu di `wipe_flow.dart` + memanggil ekspor
-/// sebelum layanan ini dijalankan.
+/// P8: tombol "Simpan salinan dulu" di dialog konfirmasi pertama hidup
+/// di `wipe_flow.dart` (memanggil ekspor sebelum layanan ini jalan).
 ///
 /// Setiap langkah dibungkus try/catch sendiri: satu kegagalan (mis.
 /// file sudah hilang) tidak menggagalkan langkah lain. Hasil berisi
@@ -122,6 +122,17 @@ class DataWipeService {
         }
       });
     }
+
+    // File log internal yatim (P8 residu): instalasi lama masih punya
+    // laras-internal.log di direktori dokumen; InternalLog dihapus
+    // Blue 3, jadi file ini tidak pernah ditulis lagi (≤1 MB).
+    final File orphanLog = File('${_documentsDir.path}/laras-internal.log');
+    await step('menghapus ${orphanLog.path}', () async {
+      if (orphanLog.existsSync()) {
+        orphanLog.deleteSync();
+        deletedFiles++;
+      }
+    });
 
     // Direktori unduhan + ruang lagu yang pernah diputar (rekursif).
     for (final Directory dir in <Directory>[_downloadsDir, _cacheDir]) {

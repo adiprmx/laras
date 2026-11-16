@@ -4,10 +4,11 @@
 /// dengan tombol "Tutup aplikasi" (restart adalah satu-satunya jalan
 /// aman karena layanan memegang database yang sudah ditutup).
 ///
-/// CATATAN P8: tombol "Simpan salinan dulu" di dialog konfirmasi pertama
-/// adalah tugas P8 (backup belum ada di P6; tombol mati dilarang).
-/// P8 menambahkan tombol itu di [_confirmFirst] + memanggil ekspor
-/// sebelum [DataWipeService.wipeAll] dijalankan.
+/// P8: dialog konfirmasi pertama punya tombol "Simpan salinan dulu"
+/// (bila [BackupService] tersedia). Menekan tombol itu mengekspor
+/// backup lewat lembar berbagi lalu KEMBALI ke dialog — penghapusan
+/// TIDAK lanjut otomatis; pengguna memutuskan sesudah ekspor (batal
+/// atau gagal pun tidak mengubah keputusan penghapusan).
 library;
 
 import 'dart:io';
@@ -16,21 +17,49 @@ import 'package:flutter/material.dart';
 
 import 'package:laras/core/theme/app_colors.dart';
 import 'package:laras/core/theme/app_theme.dart';
+import 'package:laras/features/backup/backup_service.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/resilience/data_wipe.dart';
 
 /// Jalankan alur hapus semua data.
 ///
 /// [onExitApp] disuntik untuk tes; di produksi menutup aplikasi
-/// ([exit]).
+/// ([exit]). [backupService] null berarti tombol "Simpan salinan
+/// dulu" disembunyikan (tes tanpa scope backup).
 Future<void> showWipeFlow(
   BuildContext context,
   DataWipeService wipe, {
   VoidCallback? onExitApp,
+  BackupService? backupService,
 }) async {
   final AppLocalizations strings = AppLocalizations.of(context)!;
-  final bool? first = await _confirmFirst(context, strings);
-  if (first != true || !context.mounted) return;
+  // Loop konfirmasi pertama: pilihan "salinan dulu" mengekspor lalu
+  // kembali ke dialog ini; penghapusan hanya lanjut bila pengguna
+  // menekan tombol hapus.
+  while (true) {
+    final _FirstChoice? first = await _confirmFirst(
+      context,
+      strings,
+      showBackupButton: backupService != null,
+    );
+    if (first == null || first == _FirstChoice.cancel) return;
+    if (first == _FirstChoice.backup) {
+      final BackupExportOutcome outcome =
+          await backupService!.exportAndShare();
+      if (!context.mounted) return;
+      final String message = switch (outcome) {
+        BackupExportOutcome.shared => strings.backupExported,
+        BackupExportOutcome.failed => strings.backupShareFailed,
+        BackupExportOutcome.tooLarge => strings.backupExportTooLarge,
+      };
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      continue;
+    }
+    break;
+  }
+  if (!context.mounted) return;
   final bool? second = await _confirmSecond(context, strings);
   if (second != true || !context.mounted) return;
   // Dialog progres (tidak bisa ditutup) selama penghapusan berjalan.
@@ -68,20 +97,31 @@ Future<void> showWipeFlow(
   );
 }
 
-Future<bool?> _confirmFirst(BuildContext context, AppLocalizations strings) {
-  return showDialog<bool>(
+/// Pilihan di dialog konfirmasi pertama hapus data.
+enum _FirstChoice { cancel, delete, backup }
+
+Future<_FirstChoice?> _confirmFirst(
+  BuildContext context,
+  AppLocalizations strings, {
+  required bool showBackupButton,
+}) {
+  return showDialog<_FirstChoice>(
     context: context,
     builder: (BuildContext context) => AlertDialog(
       title: Text(strings.wipeDataTitle1),
       content: Text(strings.wipeDataBody1),
       actions: <Widget>[
         TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
+          onPressed: () => Navigator.of(context).pop(_FirstChoice.cancel),
           child: Text(strings.cancel),
         ),
-        // P8 menambahkan tombol "Simpan salinan dulu" di sini.
+        if (showBackupButton)
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(_FirstChoice.backup),
+            child: Text(strings.wipeSaveBackupFirst),
+          ),
         TextButton(
-          onPressed: () => Navigator.of(context).pop(true),
+          onPressed: () => Navigator.of(context).pop(_FirstChoice.delete),
           style: TextButton.styleFrom(foregroundColor: AppColors.error),
           child: Text(strings.wipeData),
         ),

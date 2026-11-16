@@ -20,7 +20,10 @@ dependencies and reads the per-hash URL class and methods from
 base.js (fixes playback on the rotated player hashes), and Blue 3
 (Red 3 fixes) is in: response caps on the lyrics client, a
 gradle-wrapper validation job in CI, and removal of the dead
-internal log.
+internal log. P8 (backup and export) is in: versioned JSON backup
+(export/share/import with merge), Spotify playlist import without
+any Spotify API, and an import report; the delete-all-data dialog
+offers to save a backup first.
 
 ### Added
 
@@ -100,6 +103,45 @@ internal log.
   watch and Shorts links opened from outside the app play that song
   in Laras (replaces the queue). Not a verified App Link (no
   assetlinks file).
+- Versioned JSON backup (P8, B7.2/B7.3/B10.3): Settings > "Salinan
+  data" exports playlists, favorites, play history, search history,
+  queue, playback position, and settings to
+  `backup-musik-YYYYMMDD-HHmmss.json` via the Android share sheet,
+  and restores from a picked file after a summary dialog (with an
+  opt-in to also restore settings). Audio files are NOT backed up —
+  only the downloaded flag per song; after restore, a "Unduh ulang"
+  button re-queues those songs. Import merges in a single drift
+  transaction (atomic: a broken file changes nothing); same-named
+  playlists merge instead of duplicating, the backed-up queue is
+  appended behind the existing queue. Files over 10 MB and backups
+  from a newer app version are refused with a plain-language message.
+  Zero new dependencies: sharing and file-picking go through a new
+  `backup_files` MethodChannel (FileProvider + SAF), no share_plus /
+  file_picker.
+- Spotify playlist import without any Spotify API (P8, B10.1,
+  Must #10): the user pastes or picks their own track list (text
+  "Artist - Title" per line, CSV, or Spotify data-export JSON) and
+  each song is matched against YouTube Music; matches go to a new
+  playlist, misses go to the failure report. A public-playlist link
+  can also be read (proven live 17 Nov 2026: the static page renders
+  the first 30 tracks without login or JavaScript), with an honest
+  warning that only the first 30 tracks are readable and the page
+  structure may change. The app never calls api.spotify.com or
+  accounts.spotify.com, never uses a Spotify client ID/secret/token,
+  and never logs into Spotify.
+- Import report (P8, B10.4): after a backup or Spotify import, a
+  bottom sheet summarizes succeeded / already-existed / failed with
+  a per-song reason for each failure. The report is not stored.
+- "Simpan salinan dulu" in the delete-all-data dialog (P8, B7.3):
+  exports a backup first, then returns to the dialog — deletion
+  never continues automatically after the export.
+- FAQ grows from 12 to 18 questions (P8): six new Q&As about backup,
+  import, moving to a new phone, and Spotify import. The two old
+  answers that said backup "does not exist yet" now describe the
+  real feature.
+- Delete-all-data now also removes the orphaned `laras-internal.log`
+  file from old installs (P8 residue; InternalLog was removed by
+  Blue 3).
 
 ### Changed
 

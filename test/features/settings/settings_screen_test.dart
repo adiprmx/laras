@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:laras/data/database.dart';
 import 'package:laras/downloads/downloads.dart';
+import 'package:laras/features/backup/backup.dart';
+import 'package:laras/features/backup/backup_screen.dart';
 import 'package:laras/features/settings/about_screen.dart';
 import 'package:laras/features/settings/faq_screen.dart';
 import 'package:laras/features/settings/service_status_screen.dart';
@@ -40,6 +42,7 @@ void main() {
   late DownloadService downloads;
   late StreamCacheService streamCache;
   late DataWipeService wipe;
+  late BackupService backup;
 
   /// Isi clipboard tiruan (mock channel platform, lihat setUp).
   String? clipboardText;
@@ -136,6 +139,14 @@ void main() {
       downloadsDir: dlDir,
       cacheDir: cacheDir,
     );
+    // P8: layanan salinan (channel file tidak dipakai di tes ini kecuali
+    // tombol ekspor ditekan — tes wipe hanya memeriksa tombolnya ada).
+    backup = BackupService(
+      library: library,
+      settings: settings,
+      prefs: prefs,
+      files: BackupFileChannel(),
+    );
   });
 
   tearDown(() async {
@@ -146,7 +157,10 @@ void main() {
     if (temp.existsSync()) temp.deleteSync(recursive: true);
   });
 
-  Future<AppLocalizations> pumpSettings(WidgetTester tester) async {
+  Future<AppLocalizations> pumpSettings(
+    WidgetTester tester, {
+    bool withBackup = false,
+  }) async {
     setPhoneViewport(tester);
     await pumpP6App(
       tester,
@@ -157,6 +171,7 @@ void main() {
       dataWipe: wipe,
       externalLinks: ExternalLinks(),
       libraryService: library,
+      backupService: withBackup ? backup : null,
     );
     final AppLocalizations strings = AppLocalizations.of(
       tester.element(find.byType(Scaffold).first),
@@ -324,7 +339,7 @@ void main() {
     await closePump(tester);
   });
 
-  testWidgets('FAQ membuka layar FAQ 12 pertanyaan',
+  testWidgets('FAQ membuka layar FAQ 18 pertanyaan (P8: +6 backup/impor)',
       (WidgetTester tester) async {
     final AppLocalizations strings = await pumpSettings(tester);
     await tester.tap(find.text(strings.faqTitle));
@@ -332,6 +347,11 @@ void main() {
     expect(find.byType(FaqScreen), findsOneWidget);
     expect(find.text(strings.faq1q), findsOneWidget);
     expect(find.text(strings.faq12q), findsOneWidget);
+    // P8: pertanyaan baru tentang salinan + Spotify (di bawah lipatan).
+    await tester.drag(find.text(strings.faq12q), const Offset(0, -800));
+    await tester.pumpAndSettle();
+    expect(find.text(strings.faq13q), findsOneWidget);
+    expect(find.text(strings.faq18q), findsOneWidget);
     await closePump(tester);
   });
 
@@ -390,6 +410,47 @@ void main() {
     // -> snackbar) butuh pump ekstra walau sudah settle.
     await tester.pump(const Duration(seconds: 1));
     expect(find.text(strings.reportProblemNoMail), findsOneWidget);
+    await closePump(tester);
+  });
+
+  testWidgets('P8: kelompok Akun dan data + baris Salinan data',
+      (WidgetTester tester) async {
+    final AppLocalizations strings = await pumpSettings(
+      tester,
+      withBackup: true,
+    );
+    expect(find.text(strings.settingsAccountGroup), findsOneWidget);
+    expect(find.text(strings.backupTitle), findsOneWidget);
+    await tester.tap(find.text(strings.backupTitle));
+    await tester.pumpAndSettle();
+    expect(find.byType(BackupScreen), findsOneWidget);
+    await closePump(tester);
+  });
+
+  testWidgets('P8: tanpa backup, kelompok Akun dan data hanya berisi hapus data',
+      (WidgetTester tester) async {
+    final AppLocalizations strings = await pumpSettings(tester);
+    // Kelompok tetap tampil karena layanan hapus data ada; baris
+    // salinan disembunyikan (tanpa tombol mati).
+    expect(find.text(strings.settingsAccountGroup), findsOneWidget);
+    expect(find.text(strings.backupTitle), findsNothing);
+    expect(find.text(strings.wipeData), findsOneWidget);
+    await closePump(tester);
+  });
+
+  testWidgets('P8: dialog hapus data menawarkan Simpan salinan dulu',
+      (WidgetTester tester) async {
+    final AppLocalizations strings = await pumpSettings(
+      tester,
+      withBackup: true,
+    );
+    await tester.tap(find.text(strings.wipeData));
+    await tester.pumpAndSettle();
+    expect(find.text(strings.wipeSaveBackupFirst), findsOneWidget);
+    // Batal: tidak ada yang terhapus.
+    await tester.tap(find.text(strings.cancel));
+    await tester.pumpAndSettle();
+    expect(find.text(strings.wipeDataTitle1), findsNothing);
     await closePump(tester);
   });
 

@@ -9,6 +9,7 @@ import 'package:laras/data/database.dart';
 import 'package:laras/downloads/downloads.dart';
 import 'package:laras/extractor/canary.dart';
 import 'package:laras/extractor/remote_config.dart';
+import 'package:laras/features/backup/backup.dart';
 import 'package:laras/features/search/search_service.dart';
 import 'package:laras/main.dart';
 import 'package:laras/player/player.dart';
@@ -72,6 +73,8 @@ Future<void> pumpP6App(
   SearchService? searchService,
   DownloadService? downloadService,
   StreamCacheService? streamCache,
+  BackupService? backupService,
+  SpotifyImportService? spotifyImportService,
 }) async {
   final FakeAudioPlayerPort port = FakeAudioPlayerPort();
   addTearDown(port.dispose);
@@ -91,6 +94,8 @@ Future<void> pumpP6App(
       serviceStatus: serviceStatus,
       dataWipe: dataWipe,
       externalLinks: externalLinks,
+      backupService: backupService,
+      spotifyImportService: spotifyImportService,
     ),
   );
   await tester.pumpAndSettle();

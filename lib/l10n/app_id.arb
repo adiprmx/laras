@@ -1264,17 +1264,17 @@
   "@faq5q": {
     "description": "P6: FAQ 5."
   },
-  "faq5a": "Di versi ini belum ada file salinan. Fitur itu akan hadir di versi berikutnya, dan file lagunya tetap perlu diunduh ulang karena hanya daftar lagu dan pengaturan yang ikut tersimpan.",
+  "faq5a": "File salinan hanya berisi daftar lagu, playlist, dan pengaturan, bukan file lagunya, supaya filenya tetap kecil dan mudah dikirim. Sesudah memulihkan di HP baru, tekan 'Unduh ulang' untuk mengunduh lagi lagu-lagumu.",
   "@faq5a": {
-    "description": "P6: jawaban FAQ 5, ditulis ulang jujur untuk v1 (backup baru ada di P8; P8 wajib memperbarui jawaban ini)."
+    "description": "P8: jawaban FAQ 5 diperbarui — file salinan kini ada (B7.2/B7.4)."
   },
   "faq6q": "Bagaimana cara memindahkan data ke HP baru?",
   "@faq6q": {
     "description": "P6: FAQ 6."
   },
-  "faq6a": "Di versi ini data belum bisa dipindahkan ke HP lain. Fitur salinan data akan hadir di versi berikutnya.",
+  "faq6a": "Di HP lama, buka Pengaturan, lalu 'Salinan data', lalu 'Salin data ke file'. Kirim file itu ke HP baru lewat kabel, Bluetooth, atau aplikasi kirim file. Di HP baru, buka menu yang sama lalu 'Pulihkan dari file' dan pilih file itu.",
   "@faq6a": {
-    "description": "P6: jawaban FAQ 6, ditulis ulang jujur untuk v1 (backup baru ada di P8; P8 wajib memperbarui jawaban ini)."
+    "description": "P8: jawaban FAQ 6 diperbarui — pindah HP kini bisa lewat file salinan (B7.5)."
   },
   "faq7q": "Kenapa musik berhenti sendiri saat saya membuka app lain?",
   "@faq7q": {
@@ -1525,5 +1525,401 @@
   "dlStorageNoticeContinue": "Mengerti, lanjut unduh",
   "@dlStorageNoticeContinue": {
     "description": "Rombak UI-2: tombol lanjut ke dialog kualitas sesudah penjelasan penyimpanan."
+  },
+  "settingsAccountGroup": "Akun dan data",
+  "@settingsAccountGroup": {
+    "description": "P8: kelompok Pengaturan untuk salinan data dan hapus data (B7.1)."
+  },
+  "backupTitle": "Salinan data",
+  "@backupTitle": {
+    "description": "P8: judul layar salinan data."
+  },
+  "backupIntro": "Salinan berisi playlist, lagu favorit, riwayat, antrean, dan pengaturanmu. File lagu yang sudah diunduh tidak ikut tersimpan, hanya daftar lagunya. Di HP baru, lagu perlu diunduh ulang.",
+  "@backupIntro": {
+    "description": "P8: penjelasan jujur isi file salinan (B7.2/B7.4)."
+  },
+  "backupExport": "Salin data ke file",
+  "@backupExport": {
+    "description": "P8: tombol ekspor backup."
+  },
+  "backupImport": "Pulihkan dari file",
+  "@backupImport": {
+    "description": "P8: tombol impor backup."
+  },
+  "backupExporting": "Menyiapkan file salinan...",
+  "@backupExporting": {
+    "description": "P8: indikator proses saat ekspor berjalan."
+  },
+  "backupImporting": "Memulihkan salinan...",
+  "@backupImporting": {
+    "description": "P8: indikator proses saat impor berjalan."
+  },
+  "backupExported": "File salinan siap dibagikan. Simpan file ini baik-baik. Tanpa file ini, datamu tidak bisa dipulihkan.",
+  "@backupExported": {
+    "description": "P8: pesan sesudah lembar berbagi dibuka (B7.2-K6)."
+  },
+  "backupExportFailed": "File salinan gagal dibuat. Coba lagi.",
+  "@backupExportFailed": {
+    "description": "P8: pesan bila ekspor gagal."
+  },
+  "backupExportTooLarge": "Salinanmu terlalu besar untuk dibagikan sebagai satu file. Hapus sebagian riwayat dulu, lalu coba lagi.",
+  "@backupExportTooLarge": {
+    "description": "P8: pesan bila salinan yang dihasilkan melebihi batas impor 10 MB."
+  },
+  "backupShareFailed": "File salinan gagal dibagikan. Coba lagi.",
+  "@backupShareFailed": {
+    "description": "P8: pesan bila lembar berbagi gagal dibuka."
+  },
+  "backupPickFailed": "File tidak bisa dibaca. Coba file lain.",
+  "@backupPickFailed": {
+    "description": "P8: pesan bila file pilihan tidak bisa dibaca."
+  },
+  "backupTooLarge": "File ini terlalu besar. Pilih file salinan yang ukurannya di bawah 10 MB.",
+  "@backupTooLarge": {
+    "description": "P8: pesan bila file impor melebihi batas 10 MB."
+  },
+  "backupNotBackup": "File ini bukan file salinan dari app ini. Pilih file salinan yang benar.",
+  "@backupNotBackup": {
+    "description": "P8: pesan bila file bukan file salinan Laras (B7.3)."
+  },
+  "backupNewerVersion": "File ini dibuat oleh app versi yang lebih baru. Perbarui app ini dulu, lalu coba lagi.",
+  "@backupNewerVersion": {
+    "description": "P8: pesan bila backupVersion lebih baru dari app (B7.3)."
+  },
+  "backupInvalid": "File salinan ini rusak atau tidak lengkap. Pilih file salinan yang lain.",
+  "@backupInvalid": {
+    "description": "P8: pesan bila struktur file salinan tidak valid."
+  },
+  "backupPreviewTitle": "Pulihkan salinan ini?",
+  "@backupPreviewTitle": {
+    "description": "P8: judul dialog ringkasan sebelum impor (B10.3)."
+  },
+  "backupPreviewSongs": "{count} lagu",
+  "@backupPreviewSongs": {
+    "description": "P8: baris ringkasan jumlah lagu.",
+    "placeholders": {
+      "count": {
+        "example": "42",
+        "type": "int"
+      }
+    }
+  },
+  "backupPreviewPlaylists": "{count} playlist",
+  "@backupPreviewPlaylists": {
+    "description": "P8: baris ringkasan jumlah playlist.",
+    "placeholders": {
+      "count": {
+        "example": "3",
+        "type": "int"
+      }
+    }
+  },
+  "backupPreviewFavorites": "{count} lagu favorit",
+  "@backupPreviewFavorites": {
+    "description": "P8: baris ringkasan jumlah favorit.",
+    "placeholders": {
+      "count": {
+        "example": "12",
+        "type": "int"
+      }
+    }
+  },
+  "backupPreviewHistory": "{count} riwayat putar",
+  "@backupPreviewHistory": {
+    "description": "P8: baris ringkasan jumlah entri riwayat putar.",
+    "placeholders": {
+      "count": {
+        "example": "120",
+        "type": "int"
+      }
+    }
+  },
+  "backupPreviewSearches": "{count} riwayat pencarian",
+  "@backupPreviewSearches": {
+    "description": "P8: baris ringkasan jumlah query riwayat pencarian.",
+    "placeholders": {
+      "count": {
+        "example": "8",
+        "type": "int"
+      }
+    }
+  },
+  "backupPreviewQueue": "{count} lagu di antrean",
+  "@backupPreviewQueue": {
+    "description": "P8: baris ringkasan jumlah lagu antrean.",
+    "placeholders": {
+      "count": {
+        "example": "5",
+        "type": "int"
+      }
+    }
+  },
+  "backupPreviewDownloaded": "{count} lagu pernah diunduh",
+  "@backupPreviewDownloaded": {
+    "description": "P8: baris ringkasan jumlah lagu yang dulu terunduh.",
+    "placeholders": {
+      "count": {
+        "example": "20",
+        "type": "int"
+      }
+    }
+  },
+  "backupPreviewMadeOn": "Dibuat {date}",
+  "@backupPreviewMadeOn": {
+    "description": "P8: baris ringkasan tanggal salinan dibuat.",
+    "placeholders": {
+      "date": {
+        "example": "17 Nov 2026, 04.38",
+        "type": "String"
+      }
+    }
+  },
+  "backupPreviewFromApp": "Dari app versi {version}",
+  "@backupPreviewFromApp": {
+    "description": "P8: baris ringkasan versi app pembuat salinan.",
+    "placeholders": {
+      "version": {
+        "example": "0.9.0",
+        "type": "String"
+      }
+    }
+  },
+  "backupApplySettings": "Pulihkan juga pengaturan dari file ini",
+  "@backupApplySettings": {
+    "description": "P8: opsi pengaturan di dialog impor (default aktif, B10.3)."
+  },
+  "backupRestore": "Pulihkan",
+  "@backupRestore": {
+    "description": "P8: tombol konfirmasi impor di dialog ringkasan."
+  },
+  "backupCurrentTitle": "Isi salinanmu sekarang",
+  "@backupCurrentTitle": {
+    "description": "P8: judul ringkasan isi backup sebelum ekspor (B7.2)."
+  },
+  "backupEmptyNote": "Belum ada data untuk disalin. Cari dan simpan lagu dulu, lalu kembali ke sini.",
+  "@backupEmptyNote": {
+    "description": "P8: catatan bila library masih kosong saat membuka layar salinan."
+  },
+  "wipeSaveBackupFirst": "Simpan salinan dulu",
+  "@wipeSaveBackupFirst": {
+    "description": "P8: tombol ekspor di dialog pertama hapus semua data (B7.3)."
+  },
+  "importReportTitle": "Hasil impor",
+  "@importReportTitle": {
+    "description": "P8: judul laporan hasil impor (B10.4)."
+  },
+  "importReportSummary": "{ok} berhasil, {already} sudah ada, {failed} gagal",
+  "@importReportSummary": {
+    "description": "P8: ringkasan angka laporan hasil impor.",
+    "placeholders": {
+      "ok": {
+        "example": "87",
+        "type": "int"
+      },
+      "already": {
+        "example": "5",
+        "type": "int"
+      },
+      "failed": {
+        "example": "3",
+        "type": "int"
+      }
+    }
+  },
+  "importReportAllOk": "Semua berhasil masuk.",
+  "@importReportAllOk": {
+    "description": "P8: pesan bila tidak ada yang gagal di laporan impor."
+  },
+  "importReportFailedTitle": "Yang tidak berhasil:",
+  "@importReportFailedTitle": {
+    "description": "P8: judul daftar lagu gagal di laporan impor."
+  },
+  "importFailNotFound": "Tidak ditemukan",
+  "@importFailNotFound": {
+    "description": "P8: alasan gagal impor Spotify (B10.4)."
+  },
+  "importFailSkipped": "Kamu melewati lagu ini",
+  "@importFailSkipped": {
+    "description": "P8: alasan gagal impor Spotify bila pengguna melewati lagu (pemilih kandidat pasca-P8)."
+  },
+  "importFailCancelled": "Dibatalkan",
+  "@importFailCancelled": {
+    "description": "P8: alasan gagal impor bila pengguna membatalkan."
+  },
+  "importFailQueueFull": "Antrean sudah penuh",
+  "@importFailQueueFull": {
+    "description": "P8: alasan gagal impor backup bila antrean sudah 200 item."
+  },
+  "importFailSearchFailed": "Tidak bisa dicari sekarang",
+  "@importFailSearchFailed": {
+    "description": "P8: alasan gagal impor Spotify bila pencarian satu lagu gagal."
+  },
+  "importFailNetwork": "Tidak ada internet saat mencocokkan",
+  "@importFailNetwork": {
+    "description": "P8: alasan gagal impor Spotify bila jaringan putus di tengah."
+  },
+  "importReportDone": "Selesai",
+  "@importReportDone": {
+    "description": "P8: tombol menutup laporan hasil impor."
+  },
+  "importReportViewPlaylist": "Lihat playlist",
+  "@importReportViewPlaylist": {
+    "description": "P8: tombol membuka playlist hasil impor Spotify."
+  },
+  "importRedownload": "Unduh ulang lagu yang dulu sudah diunduh",
+  "@importRedownload": {
+    "description": "P8: tombol unduh ulang sesudah impor backup (B7.5)."
+  },
+  "importRedownloadQueued": "Lagu dimasukkan ke antrean unduhan.",
+  "@importRedownloadQueued": {
+    "description": "P8: pesan sesudah tombol unduh ulang ditekan."
+  },
+  "spotifyTitle": "Bawa playlist dari Spotify",
+  "@spotifyTitle": {
+    "description": "P8: judul layar impor Spotify (B10.1)."
+  },
+  "spotifyIntro": "App ini tidak terhubung ke Spotify dan tidak memakai akun Spotify-mu. Kamu membawa sendiri daftar lagunya, lalu app mencari tiap lagu di YouTube Music.",
+  "@spotifyIntro": {
+    "description": "P8: penjelasan impor Spotify tanpa API (B10.1)."
+  },
+  "spotifyFromFile": "Pilih file daftar lagu",
+  "@spotifyFromFile": {
+    "description": "P8: tombol impor Spotify jalur file (B)."
+  },
+  "spotifyFromLink": "Baca dari tautan",
+  "@spotifyFromLink": {
+    "description": "P8: tombol impor Spotify jalur tautan (A)."
+  },
+  "spotifyPasteTitle": "Tempel daftar lagu",
+  "@spotifyPasteTitle": {
+    "description": "P8: judul bagian tempel daftar lagu."
+  },
+  "spotifyPasteHint": "Satu lagu per baris, bentuknya Artis - Judul",
+  "@spotifyPasteHint": {
+    "description": "P8: petunjuk kolom tempel daftar lagu."
+  },
+  "spotifyPasteUse": "Pakai daftar ini",
+  "@spotifyPasteUse": {
+    "description": "P8: tombol memakai daftar lagu yang ditempel."
+  },
+  "spotifyLinkHint": "Tempel tautan playlist Spotify di sini",
+  "@spotifyLinkHint": {
+    "description": "P8: petunjuk kolom tautan playlist Spotify."
+  },
+  "spotifyLinkWarning": "Membaca tautan bisa gagal sewaktu-waktu karena Spotify mengubah halamannya. Tautan hanya membaca 30 lagu pertama. Untuk playlist yang panjang, pakai file daftar lagu.",
+  "@spotifyLinkWarning": {
+    "description": "P8: peringatan risiko ToS/kerapuhan + batas 30 lagu jalur A (R11)."
+  },
+  "spotifyLinkInvalid": "Tautan ini bukan tautan playlist Spotify. Tempel tautan playlist yang dibagikan dari Spotify.",
+  "@spotifyLinkInvalid": {
+    "description": "P8: pesan bila tautan bukan playlist open.spotify.com."
+  },
+  "spotifyLinkUnreadable": "Tautan ini tidak bisa dibaca. Pastikan playlist-nya publik, atau pakai file daftar lagu.",
+  "@spotifyLinkUnreadable": {
+    "description": "P8: pesan bila halaman playlist tidak bisa dibaca (B10.1)."
+  },
+  "spotifyLinkEmpty": "Tidak ada lagu yang terbaca dari tautan ini. Coba pakai file daftar lagu.",
+  "@spotifyLinkEmpty": {
+    "description": "P8: pesan bila 0 lagu terbaca dari tautan (B10.1)."
+  },
+  "spotifyFileEmpty": "Tidak ada lagu yang terbaca dari file ini.",
+  "@spotifyFileEmpty": {
+    "description": "P8: pesan bila file daftar lagu tidak berisi lagu yang terbaca."
+  },
+  "spotifyPlaylistName": "Nama playlist",
+  "@spotifyPlaylistName": {
+    "description": "P8: label kolom nama playlist hasil impor Spotify."
+  },
+  "spotifyDefaultPlaylistName": "Lagu dari Spotify",
+  "@spotifyDefaultPlaylistName": {
+    "description": "P8: nama bawaan playlist hasil impor Spotify bila nama asal tidak diketahui."
+  },
+  "spotifyTrackCount": "{count} lagu",
+  "@spotifyTrackCount": {
+    "description": "P8: jumlah lagu di draf impor Spotify.",
+    "placeholders": {
+      "count": {
+        "example": "87",
+        "type": "int"
+      }
+    }
+  },
+  "spotifyTruncatedNote": "Hanya 30 lagu pertama yang terbaca dari tautan ini.",
+  "@spotifyTruncatedNote": {
+    "description": "P8: catatan bila draf jalur A terpotong di 30 lagu."
+  },
+  "spotifyStartMatching": "Mulai mencocokkan",
+  "@spotifyStartMatching": {
+    "description": "P8: tombol memulai pencocokan lagu ke YouTube Music."
+  },
+  "spotifyMatching": "Mencocokkan lagu {done} dari {total}",
+  "@spotifyMatching": {
+    "description": "P8: progres pencocokan impor Spotify (B10.1).",
+    "placeholders": {
+      "done": {
+        "example": "12",
+        "type": "int"
+      },
+      "total": {
+        "example": "87",
+        "type": "int"
+      }
+    }
+  },
+  "spotifyCancel": "Batalkan",
+  "@spotifyCancel": {
+    "description": "P8: tombol membatalkan pencocokan impor Spotify."
+  },
+  "spotifyMatchingFailed": "Pencocokan gagal. Coba lagi.",
+  "@spotifyMatchingFailed": {
+    "description": "P8: pesan bila pencocokan impor Spotify gagal total."
+  },
+  "faq13q": "Apa saja yang tersimpan di file salinan?",
+  "@faq13q": {
+    "description": "P8: FAQ 13."
+  },
+  "faq13a": "Playlist, lagu favorit, riwayat putar, riwayat pencarian, antrean, dan pengaturanmu. File lagu yang sudah diunduh tidak ikut tersimpan, hanya daftar lagunya.",
+  "@faq13a": {
+    "description": "P8: jawaban FAQ 13 (isi file salinan, B7.2)."
+  },
+  "faq14q": "Apakah memulihkan salinan menghapus data yang sudah ada?",
+  "@faq14q": {
+    "description": "P8: FAQ 14."
+  },
+  "faq14a": "Tidak. Data dari file digabung dengan data yang sudah ada di HP. Playlist yang namanya sama digabung lagunya, dan antrean dari file ditambahkan di belakang antreanmu.",
+  "@faq14a": {
+    "description": "P8: jawaban FAQ 14 (merge impor, B10.3)."
+  },
+  "faq15q": "Bagaimana cara membawa playlist dari Spotify?",
+  "@faq15q": {
+    "description": "P8: FAQ 15."
+  },
+  "faq15a": "Buka Pengaturan, lalu 'Salinan data', lalu 'Bawa playlist dari Spotify'. Kamu bisa memilih file berisi daftar lagu, menempel daftar lagu, atau menempel tautan playlist publik. App ini tidak terhubung ke Spotify dan tidak memakai akunmu.",
+  "@faq15a": {
+    "description": "P8: jawaban FAQ 15 (impor Spotify, B10.1)."
+  },
+  "faq16q": "Kenapa tautan Spotify hanya membaca 30 lagu pertama?",
+  "@faq16q": {
+    "description": "P8: FAQ 16."
+  },
+  "faq16a": "Halaman playlist Spotify hanya menampilkan 30 lagu pertama tanpa login. App ini tidak memakai login, jadi hanya 30 lagu itu yang bisa dibaca dari tautan. Untuk playlist yang lebih panjang, pakai file berisi daftar lagunya.",
+  "@faq16a": {
+    "description": "P8: jawaban FAQ 16 (batas 30 lagu jalur A, terbukti probe 17 Nov 2026)."
+  },
+  "faq17q": "Kenapa sebagian lagu dari Spotify tidak ditemukan?",
+  "@faq17q": {
+    "description": "P8: FAQ 17."
+  },
+  "faq17a": "Biasanya karena judul atau nama artisnya berbeda ejaan dengan yang ada di YouTube Music, atau lagunya memang tidak ada di YouTube Music. Laporan sesudah impor menunjukkan lagu mana saja yang tidak berhasil.",
+  "@faq17a": {
+    "description": "P8: jawaban FAQ 17 (laporan gagal impor Spotify, B10.4)."
+  },
+  "faq18q": "File salinan saya tidak bisa dibuka. Kenapa?",
+  "@faq18q": {
+    "description": "P8: FAQ 18."
+  },
+  "faq18a": "Kemungkinan filenya rusak atau berubah isinya, atau file itu dibuat oleh app versi yang lebih baru. Kalau dibuat app yang lebih baru, perbarui app ini dulu lalu coba lagi. File yang ukurannya di atas 10 MB juga ditolak.",
+  "@faq18a": {
+    "description": "P8: jawaban FAQ 18 (file salinan ditolak, B7.3)."
   }
 }

@@ -94,6 +94,19 @@ void main() {
     expect(again.fullySucceeded, isTrue);
   });
 
+  test('P8 residu: file log internal yatim ikut terhapus bila masih ada',
+      () async {
+    File('${documents.path}/laras-internal.log')
+        .writeAsStringSync('log lama');
+    final WipeResult result = await makeWipe().wipeAll();
+    expect(result.fullySucceeded, isTrue);
+    expect(result.deletedFiles, 1);
+    expect(
+      File('${documents.path}/laras-internal.log').existsSync(),
+      isFalse,
+    );
+  });
+
   test('satu langkah gagal tidak menghentikan langkah lain', () async {
     File('${downloads.path}/lagu.m4a').writeAsStringSync('audio');
     final WipeResult result = await makeWipe(

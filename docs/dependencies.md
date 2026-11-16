@@ -349,3 +349,38 @@ Ringkasan alasan:
 - Tanda tangan Ed25519 untuk config remote (lihat §5, R1-L1).
 - Cabang `hasError` di FutureBuilder browse (`browse_detail_screen.dart`)
   — celah laten untuk error non-ExtractorException.
+
+## 7. P8: nol dependensi baru (17 Nov 2026)
+
+Kebutuhan P8: berbagi satu file JSON lewat lembar berbagi Android +
+memilih satu file lewat pemilih dokumen sistem. Kandidat pub yang
+biasa dipakai — `share_plus` dan `file_picker` — DITOLAK dan TIDAK
+masuk `pubspec.yaml`:
+
+- `share_plus` 12.0.2 ada di pub cache lokal, tapi
+  `share_plus_android` (platform interface yang dibutuhkannya) TIDAK
+  ada; `file_picker` tidak ada sama sekali di cache. Egress VM
+  flapping per-menit membuat `pub get` untuk mengunduhnya tidak bisa
+  diandalkan pada saat itu.
+- Kebutuhan P8 hanya dua aksi native sederhana (chooser ACTION_SEND +
+  SAF ACTION_OPEN_DOCUMENT), dan pola MethodChannel ke MainActivity
+  sudah mapan di proyek ini (P5 storage, P6 connectivity/external,
+  P7 equalizer/deep-link) — preseden P6 memakai MethodChannel
+  daripada `url_launcher`/`connectivity_plus` untuk alasan yang sama.
+- Dampak F-Droid: nol dependensi baru berarti nol permukaan
+  supply-chain baru dan nol izin baru (FileProvider + SAF tidak butuh
+  izin penyimpanan).
+
+Yang dibangun sebagai ganti: MethodChannel
+`id.my.adipmusic.laras/backup_files` (`lib/features/backup/backup_file_channel.dart`
++ `MainActivity.kt` + FileProvider `res/xml/file_paths.xml`, hanya
+`cache-path`). Batas baca native 10.000.001 byte (1 byte di atas
+batas impor Dart 10 MB) supaya file raksasa ditolak sebelum dimuat
+utuh ke memori. Pembatalan berbagi tidak terdeteksi (keterbatasan
+ACTION_SEND) dan didokumentasikan di kode + UI memperlakukan
+"sukses" sebagai "lembar berbagi berhasil dibuka".
+
+**Catatan untuk tim berikutnya:** bila suatu saat `share_plus` /
+`file_picker` tetap ingin dipakai (mis. butuh berbagi ke iOS atau
+pemilih multi-file), tinjau dulu sesuai §5.1 (pub points, lisensi,
+riwayat pemeliharaan) — jangan tambahkan diam-diam.

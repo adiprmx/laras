@@ -313,11 +313,21 @@ SigCallSite? extractSigCallSite(String baseJs) {
   if (chain == null) return null;
   final String tempVar = chain.group(1)!;
   final String middleName = chain.group(2)!;
-  final int middleA = int.parse(chain.group(3)!);
-  final int middleB = int.parse(chain.group(4)!);
+  // tryParse, bukan parse: grup \d+ tanpa batas bisa berisi angka
+  // > int64 (base.js patologis) — parse melempar FormatException yang
+  // lolos dari jalur terdegradasi loader/orkestrator (hanya menangkap
+  // ExtractorException). null di sini -> null -> unknownPlayerHash.
+  final int? middleA = int.tryParse(chain.group(3)!);
+  final int? middleB = int.tryParse(chain.group(4)!);
   final String innerName = chain.group(5)!;
-  final int innerA = int.parse(chain.group(6)!);
-  final int innerB = int.parse(chain.group(7)!);
+  final int? innerA = int.tryParse(chain.group(6)!);
+  final int? innerB = int.tryParse(chain.group(7)!);
+  if (middleA == null ||
+      middleB == null ||
+      innerA == null ||
+      innerB == null) {
+    return null;
+  }
 
   // Langkah 2: f[w[N]](h, AKHIR(a,b,tempVar)) di dekat call site (dalam
   // 500 karakter). Pembungkus `f[w[N]]` adalah pemanggilan metode set
@@ -332,10 +342,13 @@ SigCallSite? extractSigCallSite(String baseJs) {
   );
   final RegExpMatch? outer = outerPattern.firstMatch(window);
   if (outer == null) return null;
-  final int setMethodTableIndex = int.parse(outer.group(1)!);
+  final int? setMethodTableIndex = int.tryParse(outer.group(1)!);
   final String outerName = outer.group(2)!;
-  final int outerA = int.parse(outer.group(3)!);
-  final int outerB = int.parse(outer.group(4)!);
+  final int? outerA = int.tryParse(outer.group(3)!);
+  final int? outerB = int.tryParse(outer.group(4)!);
+  if (setMethodTableIndex == null || outerA == null || outerB == null) {
+    return null;
+  }
 
   // Langkah 3: objek helper dari badan fungsi tengah - identifier yang
   // dipakai sebagai `IDENT[w[...]]` dan bukan parameter/lokal.
@@ -530,6 +543,22 @@ const Set<String> _kJsKeywords = <String>{
 
 final RegExp _kJsIdentifierPattern = RegExp(r'[A-Za-z_$][A-Za-z0-9_$]*');
 
+/// Kedalaman maksimum template literal `${...}` bersarang yang dipindai
+/// pemindai JS kecil (`_blankJsCode`/`_skipJsBalanced` dan rekursi
+/// mutualnya). Template di base.js nyata paling dalam 1–2 level;
+/// 32 sangat longgar. Melebihi batas → [ExtractorException]
+/// unknownPlayerHash (bukan StackOverflowError) supaya kegagalan
+/// masuk jalur terdegradasi loader/orkestrator seperti kegagalan
+/// ekstraksi lain.
+const int kMaxTemplateDepth = 32;
+
+/// Kegagalan kedalaman template — satu-satunya cara pemindai JS kecil
+/// gagal: lempar ini, jangan biarkan rekursi mencapai StackOverflow.
+Never _throwTemplateTooDeep() => throw const ExtractorException(
+      ResolveFailureCause.unknownPlayerHash,
+      detail: 'template literal bersarang melebihi batas kedalaman',
+    );
+
 /// Indeks sesudah string berquote (`'`/`"`) yang dimulai di [start].
 int _skipJsQuoted(String code, int start) {
   final String quote = code[start];
@@ -578,23 +607,31 @@ int _skipJsRegex(String code, int start) {
 
 /// Indeks sesudah kurung [close] yang menutup [open] di [start], sadar
 /// string/template di dalamnya (dipakai untuk `${...}` dan daftar
-/// parameter).
-int _skipJsBalanced(String code, int start, String open, String close) {
-  int depth = 0;
+/// parameter). [depth] adalah jumlah template literal yang membungkus
+/// posisi pindai saat ini; template bersarang di dalamnya dihitung
+/// lewat [_skipJsTemplate] dan dibatasi [kMaxTemplateDepth].
+int _skipJsBalanced(
+  String code,
+  int start,
+  String open,
+  String close, [
+  int depth = 0,
+]) {
+  int depthCounter = 0;
   int i = start;
   while (i < code.length) {
     final String ch = code[i];
     if (ch == '"' || ch == "'") {
       i = _skipJsQuoted(code, i);
     } else if (ch == '`') {
-      i = _skipJsTemplate(code, i);
+      i = _skipJsTemplate(code, i, depth + 1);
     } else if (ch == open) {
-      depth++;
+      depthCounter++;
       i++;
     } else if (ch == close) {
-      depth--;
+      depthCounter--;
       i++;
-      if (depth == 0) return i;
+      if (depthCounter == 0) return i;
     } else {
       i++;
     }
@@ -603,7 +640,9 @@ int _skipJsBalanced(String code, int start, String open, String close) {
 }
 
 /// Indeks sesudah template literal yang dimulai di [start] (backtick).
-int _skipJsTemplate(String code, int start) {
+/// [depth] adalah kedalaman template ini sendiri (1 = level terluar).
+int _skipJsTemplate(String code, int start, [int depth = 1]) {
+  if (depth > kMaxTemplateDepth) _throwTemplateTooDeep();
   int i = start + 1;
   while (i < code.length) {
     final String ch = code[i];
@@ -612,7 +651,7 @@ int _skipJsTemplate(String code, int start) {
     } else if (ch == '`') {
       return i + 1;
     } else if (ch == r'$' && i + 1 < code.length && code[i + 1] == '{') {
-      i = _skipJsBalanced(code, i + 1, '{', '}');
+      i = _skipJsBalanced(code, i + 1, '{', '}', depth);
     } else {
       i++;
     }
@@ -627,7 +666,11 @@ int _skipJsTemplate(String code, int start) {
 ///
 /// Tanpa blanking ini, pemindai referensi bisa salah mengira isi string
 /// (`"Vm("` di pesan error) atau isi regex sebagai dependensi.
-String _blankJsCode(String code) {
+///
+/// [depth] adalah jumlah template literal yang membungkus [code];
+/// template di dalamnya dibatasi [kMaxTemplateDepth] (lihat
+/// [_blankJsTemplate]).
+String _blankJsCode(String code, [int depth = 0]) {
   final StringBuffer out = StringBuffer();
   int i = 0;
   String prevSig = '';
@@ -639,7 +682,7 @@ String _blankJsCode(String code) {
       i = end;
       prevSig = 's';
     } else if (ch == '`') {
-      i = _blankJsTemplate(code, i, out);
+      i = _blankJsTemplate(code, i, out, depth + 1);
       prevSig = 's';
     } else if (ch == '/' && i + 1 < code.length && code[i + 1] == '/') {
       int end = code.indexOf('\n', i);
@@ -671,7 +714,17 @@ String _blankJsCode(String code) {
 /// Blank-kan satu template literal (mulai di backtick [start]) ke [out]:
 /// bagian literal jadi spasi, isi `${...}` diblank-kan rekursif sebagai
 /// kode. Mengembalikan indeks sesudah backtick penutup.
-int _blankJsTemplate(String code, int start, StringBuffer out) {
+///
+/// [depth] adalah kedalaman template ini sendiri (1 = level terluar);
+/// melebihi [kMaxTemplateDepth] → [ExtractorException] unknownPlayerHash
+/// (bukan StackOverflowError dari rekursi mutual dengan [_blankJsCode]).
+int _blankJsTemplate(
+  String code,
+  int start,
+  StringBuffer out, [
+  int depth = 1,
+]) {
+  if (depth > kMaxTemplateDepth) _throwTemplateTooDeep();
   out.write(' ');
   int i = start + 1;
   while (i < code.length) {
@@ -683,9 +736,9 @@ int _blankJsTemplate(String code, int start, StringBuffer out) {
       out.write(' ');
       return i + 1;
     } else if (ch == r'$' && i + 1 < code.length && code[i + 1] == '{') {
-      final int end = _skipJsBalanced(code, i + 1, '{', '}');
+      final int end = _skipJsBalanced(code, i + 1, '{', '}', depth);
       out.write('  ');
-      out.write(_blankJsCode(code.substring(i + 2, end - 1)));
+      out.write(_blankJsCode(code.substring(i + 2, end - 1), depth));
       out.write(' ');
       i = end;
     } else {
@@ -870,7 +923,22 @@ String? _extractDefinition(String baseJs, String name) =>
 /// yang rantainya meledak; terukur: ad8d59ae 20, b559f50c 13,
 /// fad7e4e9 4). BFS menjamin dependensi terdekat dari rantai
 /// didahulukan, jadi pemotongan hanya membuang cincin terjauh.
+///
+/// Keputusan sadar (dipin tes regresi R4-I1): cap JUMLAH ini MEMOTONG,
+/// bukan gagal — rantai nyata yang berekor panjang tetap jalan dengan
+/// dependensi terdekatnya. Yang GAGAL keras adalah cap BYTE
+/// ([kMaxPreludeBytes]): prelude raksasa menandakan base.js patologis
+/// dan definisi yang terpotong akan gagal ReferenceError saat solve,
+/// lebih buruk daripada gagal jelas di ekstraksi.
 const int kMaxPreludeDependencies = 64;
+
+/// Batas total byte prelude (pernyataan tabel + alias `g` + semua
+/// definisi), diukur byte UTF-8. Terukur di tiga hash nyata: ~12 KB;
+/// 1 MB sangat longgar. Melebihi batas → [ExtractorException]
+/// unknownPlayerHash, ditegakkan SELAMA pengumpulan (bukan sesudah
+/// rakit) supaya 64 definisi raksasa yang tumpang tindih tidak sempat
+/// menumpuk ratusan MB di memori.
+const int kMaxPreludeBytes = 1024 * 1024;
 
 /// Kumpulkan dependensi TRANSITIF rantai signature (BFS dari [seeds]):
 /// untuk tiap definisi, cari referensi globalnya ([_findJsReferences])
@@ -878,12 +946,32 @@ const int kMaxPreludeDependencies = 64;
 /// (decoy cabang mati seperti `Taa`, parameter IIFE `g`) dilewati —
 /// tidak ada yang bisa dimuat untuknya.
 ///
+/// [initialBytes] adalah byte prelude yang sudah terpakai sebelum
+/// definisi (pernyataan tabel; alias `g` + pemisah menambah < 200 byte
+/// dan diabaikan terhadap cap 1 MB). Bila total byte melewati
+/// [kMaxPreludeBytes], lempar [ExtractorException] unknownPlayerHash.
+///
 /// Mengembalikan definisi dalam urutan penemuan BFS (seed dulu).
 Map<String, String> _collectTransitiveDependencies(
   String baseJs,
-  Map<String, String> seeds,
-) {
+  Map<String, String> seeds, {
+  int initialBytes = 0,
+}) {
   final Map<String, String> collected = Map<String, String>.from(seeds);
+  int totalBytes = initialBytes;
+  void addBytes(String definition) {
+    totalBytes += utf8.encode(definition).length;
+    if (totalBytes > kMaxPreludeBytes) {
+      throw const ExtractorException(
+        ResolveFailureCause.unknownPlayerHash,
+        detail: 'prelude melebihi batas byte',
+      );
+    }
+  }
+
+  for (final String definition in seeds.values) {
+    addBytes(definition);
+  }
   final List<String> queue = seeds.keys.toList();
   int head = 0;
   while (head < queue.length &&
@@ -893,6 +981,7 @@ Map<String, String> _collectTransitiveDependencies(
       if (collected.containsKey(ref)) continue;
       final String? refDef = _extractDefinition(baseJs, ref);
       if (refDef == null) continue;
+      addBytes(refDef);
       collected[ref] = refDef;
       queue.add(ref);
       if (collected.length >= kMaxPreludeDependencies) break;
@@ -997,10 +1086,21 @@ String? _findUrlSerializeMethod(String classBody) {
     className = m.group(1);
   }
   if (className == null) return null;
+  // Validasi identifier ketat yang sama seperti setMethod: regex
+  // `[A-Za-z0-9_$]+` membolehkan awalan digit (`9x`) yang bukan
+  // identifier JS valid — tolak di ekstraksi (unknownPlayerHash),
+  // bukan baru gagal SyntaxError saat solve.
+  if (_kJsIdentifierPattern.stringMatch(className) != className) {
+    return null;
+  }
   final String? classBody = extractClassDefinition(baseJs, className);
   if (classBody == null) return null;
   final String? serializeMethod = _findUrlSerializeMethod(classBody);
   if (serializeMethod == null) return null;
+  if (_kJsIdentifierPattern.stringMatch(serializeMethod) !=
+      serializeMethod) {
+    return null;
+  }
   return (
     className: className,
     setMethod: setMethod,
@@ -1075,8 +1175,13 @@ PlayerScript buildPlayerScript(String jsUrl, String baseJs) {
     callSite.outerName: outerFn,
   };
   if (helperObj != null) seeds[callSite.helperObjectName] = helperObj;
-  final Map<String, String> definitions =
-      _collectTransitiveDependencies(baseJs, seeds);
+  final Map<String, String> definitions = _collectTransitiveDependencies(
+    baseJs,
+    seeds,
+    // Cap byte mengukur TOTAL prelude: pernyataan tabel dihitung
+    // sebagai byte awal (alias `g` + pemisah < 200 byte, diabaikan).
+    initialBytes: utf8.encode(table).length,
+  );
   final String prelude = <String>[
     table,
     // Alias parameter IIFE: base.js berjalan sebagai

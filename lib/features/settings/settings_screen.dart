@@ -1,8 +1,9 @@
 /// Layar Pengaturan (P6, tugas 7) — menggantikan stub "segera hadir".
 ///
-/// Empat kelompok: Pemutaran, Unduhan dan penyimpanan, Layanan, App.
-/// Kelompok yang layanannya tidak tersedia (tes tanpa scope, atau
-/// database gagal dibuka) disembunyikan — tanpa tombol mati.
+/// Lima kelompok: Pemutaran, Unduhan dan penyimpanan, Layanan, Akun
+/// dan data (P8: salinan data + hapus data), App. Kelompok yang
+/// layanannya tidak tersedia (tes tanpa scope, atau database gagal
+/// dibuka) disembunyikan — tanpa tombol mati.
 library;
 
 import 'package:flutter/material.dart';
@@ -13,11 +14,16 @@ import 'package:laras/downloads/download_quality.dart';
 import 'package:laras/downloads/downloads_scope.dart';
 import 'package:laras/downloads/format_bytes.dart';
 import 'package:laras/extractor/canary.dart';
+import 'package:laras/features/backup/backup_scope.dart';
+import 'package:laras/features/backup/backup_screen.dart';
+import 'package:laras/features/backup/backup_service.dart';
+import 'package:laras/features/backup/spotify_import.dart';
 import 'package:laras/features/onboarding/onboarding_flow.dart';
 import 'package:laras/features/storage/storage_screen.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/resilience/app_settings.dart';
 import 'package:laras/resilience/check_updates_action.dart';
+import 'package:laras/resilience/data_wipe.dart';
 import 'package:laras/resilience/resilience_scope.dart';
 import 'package:laras/resilience/service_status.dart';
 
@@ -37,6 +43,9 @@ class SettingsScreen extends StatelessWidget {
     final ServiceStatusService? service =
         ResilienceScope.serviceStatusOf(context);
     final bool hasDownloads = DownloadsScope.downloadsOf(context) != null;
+    final BackupService? backup = BackupScope.backupOf(context);
+    final SpotifyImportService? spotify = BackupScope.spotifyOf(context);
+    final DataWipeService? wipe = ResilienceScope.dataWipeOf(context);
     return Scaffold(
       appBar: AppBar(title: Text(strings.settings)),
       body: ListView(
@@ -63,6 +72,33 @@ class SettingsScreen extends StatelessWidget {
             _GroupHeader(title: strings.settingsServiceGroup),
             _ServiceStatusRow(service: service),
             _CheckUpdatesRow(service: service),
+          ],
+          // P8 (B7.1): kelompok Akun dan data — salinan data + hapus
+          // data (hapus data pindah dari kelompok App ke sini).
+          if (backup != null || wipe != null) ...<Widget>[
+            _GroupHeader(title: strings.settingsAccountGroup),
+            if (backup != null)
+              _NavRow(
+                title: strings.backupTitle,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (BuildContext context) => BackupScreen(
+                      backup: backup,
+                      spotify: spotify,
+                    ),
+                  ),
+                ),
+              ),
+            if (wipe != null)
+              _NavRow(
+                title: strings.wipeData,
+                danger: true,
+                onTap: () => showWipeFlow(
+                  context,
+                  wipe,
+                  backupService: backup,
+                ),
+              ),
           ],
           _GroupHeader(title: strings.settingsAppGroup),
           _NavRow(
@@ -93,15 +129,6 @@ class SettingsScreen extends StatelessWidget {
             _NavRow(
               title: strings.reportProblem,
               onTap: () => openReportProblem(context),
-            ),
-          if (ResilienceScope.dataWipeOf(context) != null)
-            _NavRow(
-              title: strings.wipeData,
-              danger: true,
-              onTap: () => showWipeFlow(
-                context,
-                ResilienceScope.dataWipeOf(context)!,
-              ),
             ),
           const SizedBox(height: AppSpacing.lg),
         ],

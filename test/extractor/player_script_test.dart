@@ -8,6 +8,40 @@ String loadSnippet() =>
 
 const String kJsUrl = '/s/player/fad7e4e9/player_es6.vflset/en_US/base.js';
 
+/// Cuplikan base.js minimal yang valid untuk tes pengerasan Blue 4
+/// (R4-I1/R4-I2/R4-I3): call site + tabel + 3 fungsi + kelas URL,
+/// mengikuti pola cuplikan helper builtin di grup di bawah.
+String minimalJs({
+  String middleFn =
+      'Xm=function(a,b,c){var d=b^a;return String[w[0]](d);}',
+  String className = 'tf',
+  String classMethods =
+      'set(a,b){}get(a){return null;}gf(){return this.u;}clone(){return this;}',
+  String extra = '',
+}) =>
+    '''
+signatureTimestamp:20768,
+c=new g.$className(k.url,!0);if(k.s){var f=c,h=k.sp;
+let l=Xm(46,8518,Ip(4,6503,k.s));
+f[w[8]](h,ld(8,476,l))
+w='length;url;split;reverse;join;fromCharCode;slice;splice;set;'.split(";");
+Ip=function(a,b,c){return c;}
+$middleFn
+ld=function(a,b,c){return c;}
+$extra
+g.$className=class{constructor(a,b=!1){this.u=a;}$classMethods};
+''';
+
+/// Template literal JS bersarang sedalam [depth] level
+/// (tiap level adalah template literal di dalam `${...}` level luarnya).
+String nestedTemplate(int depth) {
+  String inner = '`x`';
+  for (int i = 1; i < depth; i++) {
+    inner = r'`${' + inner + r'}`';
+  }
+  return inner;
+}
+
 void main() {
   group('ekstraksi dari cuplikan base.js fad7e4e9 (asli, 15 Nov 2026)', () {
     test('extractJsUrl dari HTML', () {
@@ -372,6 +406,197 @@ g.tf=class{constructor(a,b=!1){this.u=a;}set(a,b){}get(a){return null;}gf(){retu
       expect(script.preludeCode, isNot(contains('f=function')));
       expect(script.preludeCode, isNot(contains('ZZ=function')));
       expect(script.preludeCode, isNot(contains('jr=function')));
+    });
+  });
+
+  group('pengerasan Blue 4 (R4-I1): cap prelude + siklus', () {
+    test('rantai 70 fungsi dipotong di cap 64 (BFS terdekat didahulukan)', () {
+      // Keputusan yang dipin tes ini: cap JUMLAH definisi MEMOTONG
+      // (bukan gagal) — cincin terjauh dibuang, rantai terdekat tetap
+      // jalan. Lihat doc kMaxPreludeDependencies. Tes pinning: perilaku
+      // ini sudah ada sebelum Blue 4; tes ini menjaganya dari regresi.
+      final StringBuffer chain = StringBuffer();
+      for (int i = 0; i < 70; i++) {
+        if (i < 69) {
+          chain.writeln('F$i=function(a){return F${i + 1}(a);}');
+        } else {
+          chain.writeln('F$i=function(a){return a;}');
+        }
+      }
+      final PlayerScript script = buildPlayerScript(
+        '/s/player/ad8d59ae/player_es6.vflset/en_US/base.js',
+        minimalJs(
+          middleFn:
+              'Xm=function(a,b,c){var d=String[w[0]](b);return F0(d);}',
+          extra: chain.toString(),
+        ),
+      );
+      // 3 seed (Ip/Xm/ld) + F0..F60 = tepat 64 definisi.
+      expect('=function('.allMatches(script.preludeCode).length, 64);
+      expect(script.preludeCode, contains('F60=function'));
+      expect(script.preludeCode, isNot(contains('F61=function')));
+      expect(script.preludeCode, isNot(contains('F69=function')));
+    });
+
+    test('siklus dependensi A->B->A terminasi, masing-masing sekali', () {
+      // Tes pinning: BFS sudah terminasi sebelum Blue 4 (visited-set);
+      // tes ini menjaganya — tanpa visited-set, build ini hang.
+      final PlayerScript script = buildPlayerScript(
+        '/s/player/ad8d59ae/player_es6.vflset/en_US/base.js',
+        minimalJs(
+          middleFn:
+              'Xm=function(a,b,c){var d=String[w[0]](b);return Aa(d);}',
+          extra: 'Aa=function(a){return Bb(a);}\n'
+              'Bb=function(a){return Aa(a);}',
+        ),
+      );
+      expect('Aa=function'.allMatches(script.preludeCode).length, 1);
+      expect('Bb=function'.allMatches(script.preludeCode).length, 1);
+    });
+
+    test('prelude melebihi cap byte (1 MB) -> unknownPlayerHash', () {
+      // Satu dependensi transitif 2 MB: total prelude jauh di atas cap.
+      // Fail-before: sebelum Blue 4, build ini SUKSES (prelude ~2 MB).
+      final String bigDef =
+          'Big=function(a){var s="${'a' * (2 * 1024 * 1024)}";return a;}';
+      expect(
+        () => buildPlayerScript(
+          '/s/player/ad8d59ae/player_es6.vflset/en_US/base.js',
+          minimalJs(
+            middleFn:
+                'Xm=function(a,b,c){var d=String[w[0]](b);return Big(d);}',
+            extra: bigDef,
+          ),
+        ),
+        throwsA(
+          isA<ExtractorException>().having(
+            (e) => e.cause,
+            'cause',
+            ResolveFailureCause.unknownPlayerHash,
+          ),
+        ),
+      );
+    });
+  });
+
+  group('pengerasan Blue 4 (R4-I2): angka & template patologis', () {
+    test('angka > int64 di grup rantai -> null (bukan FormatException)', () {
+      // Fail-before: int.parse melempar FormatException.
+      final String js = minimalJs().replaceFirst(
+        'Xm(46,8518,',
+        'Xm(46,99999999999999999999,',
+      );
+      expect(extractSigCallSite(js), isNull);
+    });
+
+    test('angka > int64 di grup luar + indeks tabel -> null', () {
+      // Fail-before: int.parse melempar FormatException.
+      final String outerHuge = minimalJs().replaceFirst(
+        'ld(8,476,l)',
+        'ld(99999999999999999999,476,l)',
+      );
+      expect(extractSigCallSite(outerHuge), isNull);
+      final String indexHuge =
+          minimalJs().replaceFirst('w[8]', 'w[99999999999999999999]');
+      expect(extractSigCallSite(indexHuge), isNull);
+    });
+
+    test('buildPlayerScript angka > int64 -> unknownPlayerHash', () {
+      // Fail-before: FormatException lolos (bukan ExtractorException),
+      // melewati jalur terdegradasi loader/orkestrator.
+      final String js = minimalJs().replaceFirst(
+        'Xm(46,8518,',
+        'Xm(46,99999999999999999999,',
+      );
+      expect(
+        () => buildPlayerScript(
+          '/s/player/ad8d59ae/player_es6.vflset/en_US/base.js',
+          js,
+        ),
+        throwsA(
+          isA<ExtractorException>().having(
+            (e) => e.cause,
+            'cause',
+            ResolveFailureCause.unknownPlayerHash,
+          ),
+        ),
+      );
+    });
+
+    test('template bersarang 100 level -> unknownPlayerHash', () {
+      // Bukan StackOverflowError: kedalaman rekursi template dibatasi
+      // 32 level. Fail-before: build SUKSES (tanpa batas kedalaman).
+      final String js = minimalJs(
+        middleFn: 'Xm=function(a,b,c){var s=${nestedTemplate(100)};'
+            'return String[w[0]](c);}',
+      );
+      expect(
+        () => buildPlayerScript(
+          '/s/player/ad8d59ae/player_es6.vflset/en_US/base.js',
+          js,
+        ),
+        throwsA(
+          isA<ExtractorException>().having(
+            (e) => e.cause,
+            'cause',
+            ResolveFailureCause.unknownPlayerHash,
+          ),
+        ),
+      );
+    });
+
+    test('template bersarang 3 level tetap jalan (kontrol positif)', () {
+      final PlayerScript script = buildPlayerScript(
+        '/s/player/ad8d59ae/player_es6.vflset/en_US/base.js',
+        minimalJs(
+          middleFn: 'Xm=function(a,b,c){var s=${nestedTemplate(3)};'
+              'return String[w[0]](c);}',
+        ),
+      );
+      expect(script.hash, 'ad8d59ae');
+      expect(script.urlClassName, 'tf');
+    });
+  });
+
+  group('pengerasan Blue 4 (R4-I3): validasi identifier URL', () {
+    test('nama kelas berawalan digit (9x) ditolak saat ekstraksi', () {
+      // Fail-before: '9x' lolos ekstraksi (build sukses, urlClassName
+      // '9x' baru gagal SyntaxError saat solve).
+      expect(
+        () => buildPlayerScript(
+          '/s/player/ad8d59ae/player_es6.vflset/en_US/base.js',
+          minimalJs(className: '9x'),
+        ),
+        throwsA(
+          isA<ExtractorException>().having(
+            (e) => e.cause,
+            'cause',
+            ResolveFailureCause.unknownPlayerHash,
+          ),
+        ),
+      );
+    });
+
+    test('metode serialisasi berawalan digit (9f) ditolak saat ekstraksi', () {
+      // Fail-before: '9f' lolos via pola utama _findUrlSerializeMethod
+      // (charset [A-Za-z0-9_$] membolehkan awalan digit).
+      expect(
+        () => buildPlayerScript(
+          '/s/player/ad8d59ae/player_es6.vflset/en_US/base.js',
+          minimalJs(
+            classMethods: 'set(a,b){}get(a){return null;}'
+                '9f(){this[w[1]]||(this[w[1]]=mB(19,1665,this));'
+                'return this[w[1]]}clone(){return this;}',
+          ),
+        ),
+        throwsA(
+          isA<ExtractorException>().having(
+            (e) => e.cause,
+            'cause',
+            ResolveFailureCause.unknownPlayerHash,
+          ),
+        ),
+      );
     });
   });
 }
