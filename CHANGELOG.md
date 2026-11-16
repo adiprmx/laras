@@ -15,7 +15,12 @@ delete-all-data. P7 (Should features) is in: lyrics, sleep timer,
 equalizer, player persistence, restart-proof queue restore, and deep
 links. Blue 2 (Red 2 security fixes) is in: stream-URL allowlist on
 the download path, byte caps and stall watchdogs, and QuickJS-ng
-0.18.0 via a pinned fork.
+0.18.0 via a pinned fork. The solver prelude now collects transitive
+dependencies and reads the per-hash URL class and methods from
+base.js (fixes playback on the rotated player hashes), and Blue 3
+(Red 3 fixes) is in: response caps on the lyrics client, a
+gradle-wrapper validation job in CI, and removal of the dead
+internal log.
 
 ### Added
 
@@ -65,8 +70,6 @@ the download path, byte caps and stall watchdogs, and QuickJS-ng
   (`showHonestySheet`, flag `honesty_sheet_shown_v1`); first-run
   orchestration (onboarding → sheet → home) belongs to the onboarding
   flow. No permanent line on home.
-- Internal log capped at 1 MB with rotation (P6): local file only,
-  never shown to the user, stream URLs redacted.
 - Lyrics (P7, LRCLIB — free, no key): synced lyrics with auto-scroll
   and a 5-second pause after the user scrolls, plain lyrics, and
   honest states for missing, instrumental, offline, and failed
@@ -112,8 +115,9 @@ the download path, byte caps and stall watchdogs, and QuickJS-ng
   info) to shrink the app code; the debug symbols are published with
   each release so crash stack traces stay symbolizable.
 - `gg_quickjs` now comes from a pinned fork (`adiprmx/gg_quickjs`,
-  commit c84a5011, package 0.1.1) bundling QuickJS-ng 0.18.0 (Blue 2,
-  R2-M3): upstream pub.dev still ships 0.17.0, which has two
+  commit 0bb8b583, package 0.1.1) bundling QuickJS-ng 0.18.0 (Blue 2,
+  R2-M3, plus the `JSInterruptHandler` signature fix — see Fixed):
+  upstream pub.dev still ships 0.17.0, which has two
   use-after-free fixes in 0.18.0 (#1781, #1844) plus uncatchable
   OOM/InternalError fixes. Return to upstream when it releases
   >= 0.18.0; see `docs/dependencies.md` §2.1.
@@ -122,6 +126,37 @@ the download path, byte caps and stall watchdogs, and QuickJS-ng
 
 ### Fixed
 
+- Solver prelude now collects the cipher chain's TRANSITIVE
+  dependencies (BFS over helper objects/functions, capped at 64
+  definitions) and the driver reads the player URL class, set
+  method, and serialize method from base.js per hash instead of
+  hardcoding them. Two real bugs, both proven by live tests:
+  (1) on `ad8d59ae` the old prelude loaded only the first helper
+  object found (`String`, a builtin), so `Vm` — used by the cipher
+  function `Xm` on a live branch — was missing and every scripted
+  resolve failed with `ReferenceError: Vm is not defined`;
+  (2) the URL class and serialize method rotate per hash
+  (`tf`/`gf` on `fad7e4e9`, `bs`/`ff` on `ad8d59ae`, `JH`/`gf` on
+  `b559f50c`; verified by direct grep: `g.tf` occurs 19 times in
+  `fad7e4e9` and 0 times in either new script), so the hardcoded
+  driver could not solve the new hashes at all. Live solve is now
+  verified end-to-end for BOTH new hashes (coordinator-reproduced:
+  googlevideo URL + `sig` parameter; the `n` transform verified on
+  `ad8d59ae`). CORRECTION: the earlier note below that `b559f50c`
+  was "verified live end-to-end" by the 6/6 extractor suite
+  overstated what that suite proved — it exercised resolve (which
+  falls back to the script-free ANDROID_VR client), not the
+  QuickJS solver.
+- Lyrics client (LRCLIB) now enforces response caps (Blue 3,
+  R3-L1): 1 MB per response via the same capped-stream pattern as
+  the Innertube client, `/search` limited to the first 20 results,
+  and lyrics over 256 KB per column are refused storage in the
+  database (still shown in the current session). Previously a
+  compromised lyrics service could exhaust memory or bloat the
+  database with one oversized response.
+- CI now validates the Gradle wrapper on every run (Blue 3, R3-I4:
+  `gradle/actions/wrapper-validation`, pinned to the v6.4.1
+  commit SHA), closing the remainder of R2-L6.
 - Fork `gg_quickjs` pin moved to `0bb8b583`: QuickJS-ng 0.18.0
   changed `JSInterruptHandler` to take `JSContext *`, and Clang 16+
   rejects the old `JSRuntime *` handler as an error (CI run
@@ -158,16 +193,26 @@ the download path, byte caps and stall watchdogs, and QuickJS-ng
   hash map and the remote config (tag `config-v1`) now carry all
   three hashes (`fad7e4e9` 20767, `ad8d59ae` 20768, `b559f50c`
   20770). Extraction of both new ciphers was verified on the real
-  scripts plus unit tests; `b559f50c` was verified live end-to-end
-  (live extractor suite 6/6, including the WEB_REMIX cipher test).
-  Live solve verification for `ad8d59ae` is still pending (VM egress
-  outage during verification; being retried). The rotation also
-  changed the player script format, fixed in the same change: the
-  string table is now double-quoted with a per-release delimiter
-  (`;` in `ad8d59ae`, `{` in `b559f50c`), and the `ad8d59ae` cipher
-  uses the `String` builtin as its helper instead of a custom
-  object (the prelude now omits the helper literal for known JS
-  builtins).
+  scripts plus unit tests, and live solve is now verified
+  end-to-end for both hashes (see the solver fix above; the live
+  extractor suite 6/6 exercised resolve, not the solver). The
+  rotation also changed the player script format, fixed in the
+  same change: the string table is now double-quoted with a
+  per-release delimiter (`;` in `ad8d59ae`, `{` in `b559f50c`), and
+  the `ad8d59ae` cipher uses the `String` builtin as its helper
+  instead of a custom object (the prelude now omits the helper
+  literal for known JS builtins).
+
+### Removed
+
+- Internal log (P6, Blue 3 R3-I1): the 1 MB capped log file was
+  never written to by any code path and never shown to the user,
+  so it was dead code. The class, its construction in `main.dart`,
+  and the wipe step are removed; the short diagnostic code (P6)
+  remains the failure-reporting mechanism. Old installs may still
+  hold an unwritten `laras-internal.log` file (at most 1 MB, URLs
+  redacted when written); a generic wipe step for it is a P8
+  option.
 
 ### Added
 

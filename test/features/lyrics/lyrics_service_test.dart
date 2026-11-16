@@ -220,4 +220,60 @@ void main() {
       expect(client.fetchCount, 1);
     });
   });
+
+  group('LyricsService: batas lirik yang disimpan (R3-L1)', () {
+    test('lirik tersinkron raksasa (>256 KB) tidak disimpan ke database',
+        () async {
+      // Tanpa cap, layanan lama menyimpan lirik 300 KB ke DB — tes ini
+      // GAGAL sebelum perbaikan R3-L1 dan LOLOS sesudahnya.
+      final Track track = testTrack('abc');
+      final FakeLrclibClient client = FakeLrclibClient(
+        result: LrclibTrack(
+          id: 9,
+          plainLyrics: 'Pendek',
+          syncedLyrics: 'x' * (300 * 1024),
+        ),
+      );
+      final LyricsService service = LyricsService(
+        client: client,
+        library: library,
+      );
+      final LyricsResult result = await service.fetch(track);
+      expect(result.status, LyricsStatus.found);
+      expect(result.hasSynced, isTrue);
+      // Lirik tetap tampil, tapi tidak disimpan (DB tidak bertambah).
+      expect(await library.getLyrics('abc'), isNull);
+    });
+
+    test('lirik polos raksasa (>256 KB) tidak disimpan ke database',
+        () async {
+      final Track track = testTrack('abc');
+      final FakeLrclibClient client = FakeLrclibClient(
+        result: LrclibTrack(id: 10, plainLyrics: 'y' * (300 * 1024)),
+      );
+      final LyricsService service = LyricsService(
+        client: client,
+        library: library,
+      );
+      final LyricsResult result = await service.fetch(track);
+      expect(result.status, LyricsStatus.found);
+      expect(await library.getLyrics('abc'), isNull);
+    });
+
+    test('lirik tepat di batas 256 KB masih disimpan', () async {
+      final Track track = testTrack('abc');
+      final FakeLrclibClient client = FakeLrclibClient(
+        result: LrclibTrack(id: 11, plainLyrics: 'z' * (256 * 1024)),
+      );
+      final LyricsService service = LyricsService(
+        client: client,
+        library: library,
+      );
+      final LyricsResult result = await service.fetch(track);
+      expect(result.status, LyricsStatus.found);
+      final Lyric? saved = await library.getLyrics('abc');
+      expect(saved, isNotNull);
+      expect(saved!.lyrics.length, 256 * 1024);
+    });
+  });
 }

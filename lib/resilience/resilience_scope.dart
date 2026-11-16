@@ -12,7 +12,6 @@ import 'package:laras/resilience/app_settings.dart';
 import 'package:laras/resilience/connectivity.dart';
 import 'package:laras/resilience/data_wipe.dart';
 import 'package:laras/resilience/external_links.dart';
-import 'package:laras/resilience/internal_log.dart';
 import 'package:laras/resilience/service_status.dart';
 
 /// InheritedWidget pembawa layanan ketahanan.
@@ -25,7 +24,6 @@ class ResilienceScope extends InheritedWidget {
     this.wifiGate,
     this.externalLinks,
     this.dataWipe,
-    this.internalLog,
   });
 
   final AppSettings? settings;
@@ -33,7 +31,6 @@ class ResilienceScope extends InheritedWidget {
   final WifiGate? wifiGate;
   final ExternalLinks? externalLinks;
   final DataWipeService? dataWipe;
-  final InternalLog? internalLog;
 
   static ResilienceScope? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<ResilienceScope>();
@@ -56,6 +53,5 @@ class ResilienceScope extends InheritedWidget {
       serviceStatus != oldWidget.serviceStatus ||
       wifiGate != oldWidget.wifiGate ||
       externalLinks != oldWidget.externalLinks ||
-      dataWipe != oldWidget.dataWipe ||
-      internalLog != oldWidget.internalLog;
+      dataWipe != oldWidget.dataWipe;
 }

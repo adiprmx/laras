@@ -13,4 +13,8 @@ Ne=function(a,b,c,d){var e=b^a;if(!((a^23)>>4)){var f=c[w[e^2644]](w[5]),h=0;f[0
 vf=function(a,b,c,d){var e=b^a;if((a^30)<17&&a-5>>3>=2){let h=c[w[e^6777]](w[5],e^6737),k=c[w[e^6777]](w[5],h+1);h>0&&k>0?(d[w[e^6731]]=c[w[2]](0,k),c=c[w[2]](k+1)):(d[w[e^6731]]=c,c=w[e^6743]);var f=[c]}(a&79)==a&&(f=encodeURIComponent(c));return f};
 jB={FG:function(a,b){a[w[34]](0,b)},
 Gz:function(a){a[w[33]]()},
-Fe:function(a,b){var c=a[0];a[0]=a[b%a[w[0]]];a[b%a[w[0]]]=c}};
+Fe:function(a,b){var c=a[0];a[0]=a[b%a[w[0]]];a[b%a[w[0]]]=c}};// SINTETIS (17 Nov 2026, BUKAN dari base.js fad7e4e9 asli — file lengkap
+// hash itu tidak tersimpan; bentuknya meniru persis kelas URL g.bs/g.JH
+// ASLI yang terverifikasi di ad8d59ae/b559f50c, dengan nama tf/gf sesuai
+// driver lama): kelas URL untuk tes ekstraksi info URL.
+g.tf=class{constructor(a,b=!1){this[w[23]]=a;this[w[13]]=b;this[w[9]]=w[6];this[w[26]]={};this[w[1]]=w[6]}set(a,b){this[w[26]][a]!==b&&(this[w[26]][a]=b,this[w[1]]=w[6])}get(a){Ne(16,3498,this);return this[w[26]][a]||null}gf(){this[w[1]]||(this[w[1]]=mB(19,1665,this));return this[w[1]]}clone(){var a=new g.tf(this[w[23]],this[w[13]]);a[w[26]]=g.ec(this[w[26]]);a[w[1]]=this[w[1]];return a}};

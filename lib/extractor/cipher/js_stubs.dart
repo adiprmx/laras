@@ -4,10 +4,11 @@
 /// atau `console`. Base.js dievaluasi sebagai IIFE yang membaca global
 /// tersebut saat inisialisasi (`new g.Gm` di akhir file). Stub ini memberi
 /// objek-objek kosong yang menelan pemanggilan umum, cukup agar evaluasi
-/// berhasil dan kelas URL internal (`_yt_player.tf`) bisa dipakai.
+/// berhasil dan kelas URL internal (nama per hash, mis. `_yt_player.tf`
+/// di fad7e4e9) bisa dipakai.
 ///
 /// Stub ini adalah port murni-JS dari stub Node yang terbukti menjalankan
-/// base.js fad7e4e9 sampai tuntas (eval 192 ms, `_yt_player.tf` bisa
+/// base.js fad7e4e9 sampai tuntas (eval 192 ms, kelas URL internal bisa
 /// dipakai membangun URL final). Perbedaan dari versi Node: timer di sini
 /// no-op yang tidak pernah memicu callback (QuickJS tanpa host tidak bisa
 /// menjalankan callback asinkron) - inisialisasi player yang tertunda

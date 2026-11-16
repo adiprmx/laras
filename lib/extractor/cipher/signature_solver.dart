@@ -2,12 +2,15 @@
 ///
 /// Jalur yang dipakai (terbukti di Node, spike 2):
 /// 1. Runtime QuickJS dievaluasi sekali dengan stub DOM + seluruh base.js
-///    + prelude signature minimal (tabel string + 3 fungsi + helper).
+///    + prelude signature minimal (tabel string + 3 fungsi + dependensi
+///    transitif rantai + alias `g`).
 /// 2. Tiap solve menjalankan driver: hitung signature dari cipher
 ///    (`LUAR(TENGAH(DALAM(s)))`), bangun URL lewat kelas URL internal
-///    player (`new _yt_player.tf(cipherUrl, true)`), set parameter
-///    signature, serialisasi (`gf()`) - serialisasi inilah yang
-///    menjalankan transform `n`.
+///    player (`new _yt_player.<kelas URL>(cipherUrl, true)` — nama kelas
+///    dan metode set/serialisasinya dibaca dari base.js per hash, karena
+///    ketiganya berputar: tf/gf di fad7e4e9, bs/ff di ad8d59ae,
+///    JH/gf di b559f50c), set parameter signature, serialisasi -
+///    serialisasi inilah yang menjalankan transform `n`.
 ///
 /// Batas SimpMusic (arsitektur 3.3, keputusan koordinator bagian 7):
 /// memori 192 MiB, stack 256 KiB, timeout 10 detik, eksekusi serial, tanpa
@@ -271,7 +274,8 @@ class QuickJsSignatureSolver implements SignatureSolver {
 ///   (undefined) tidak dipakai.
 /// - `['solve', driver]` → jalankan driver, balas `['ok', url]` atau
 ///   `['error', pesan]`. Driver wajib mengembalikan String
-///   (`__u.gf()`); nilai bukan string adalah error solver.
+///   (hasil metode serialisasi URL); nilai bukan string adalah error
+///   solver.
 ///
 /// Tidak ada callback host yang didaftarkan (`registerFunction` tidak
 /// pernah dipanggil) dan fetch tidak diaktifkan (tanpa `network` di

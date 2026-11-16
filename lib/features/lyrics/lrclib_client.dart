@@ -18,12 +18,27 @@
 /// tidak me-retry sendiri — pemanggil (LyricsService) yang memutuskan.
 library;
 
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
+import 'package:laras/extractor/errors.dart';
+import 'package:laras/extractor/response_limits.dart';
 
 /// User-Agent yang dikirim ke LRCLIB (aturan layanan: deskriptif +
 /// cara menghubungi pemilik client).
 const String kLrclibUserAgent =
     'Laras/0.9.0 (https://github.com/adiprmx/laras)';
+
+/// Batas ukuran respons LRCLIB (R3-L1): 1 MB. Lirik lagu umumnya
+/// < 50 KB, jadi batas ini sangat longgar untuk respons normal tapi
+/// menutup jalur respons raksasa yang menghabiskan memori (pola R1-M3).
+const int kLrclibMaxResponseBytes = 1024 * 1024;
+
+/// Jumlah hasil `/search` yang dipertimbangkan (R3-L1): 20 pertama.
+/// LRCLIB mengurutkan berdasarkan relevansi, jadi hasil di luar itu
+/// praktis tidak pernah yang dicari.
+const int kLrclibMaxSearchResults = 20;
 
 /// Satu hasil lirik dari LRCLIB.
 class LrclibTrack {
@@ -147,11 +162,7 @@ class LrclibClient {
       params['duration'] = duration.inSeconds;
     }
     try {
-      final Response<dynamic> response = await _dio.get<dynamic>(
-        '/get',
-        queryParameters: params,
-      );
-      final Object? data = response.data;
+      final Object? data = await _getJson('/get', params);
       if (data is! Map<String, dynamic>) {
         throw const LrclibException(
           LrclibFailureKind.invalidResponse,
@@ -172,25 +183,76 @@ class LrclibClient {
     }
   }
 
+  /// GET JSON dengan batas ukuran respons (R3-L1, pola R1-M3).
+  ///
+  /// Body dibaca sebagai stream dengan [ResponseSizeCap] +
+  /// [readCappedResponseBody] + [checkContentLength]: respons di atas
+  /// [kLrclibMaxResponseBytes] ditolak SEBELUM utuh di memori, dan
+  /// pembacaan berhenti begitu batas terlampaui. Melempar
+  /// [LrclibException] invalidResponse untuk respons raksasa / JSON
+  /// tidak valid; [DioException] lain diteruskan apa adanya supaya
+  /// pemanggil bisa membedakan 404 / 429 / error jaringan.
+  Future<dynamic> _getJson(String path, Map<String, Object> params) async {
+    final ResponseSizeCap cap = ResponseSizeCap(kLrclibMaxResponseBytes);
+    try {
+      final Response<ResponseBody> response = await _dio.get<ResponseBody>(
+        path,
+        queryParameters: params,
+        options: Options(responseType: ResponseType.stream),
+        cancelToken: cap.cancelToken,
+        onReceiveProgress: cap.onReceiveProgress,
+      );
+      checkContentLength(response, kLrclibMaxResponseBytes);
+      final Uint8List bytes = await readCappedResponseBody(
+        response.data!,
+        requestOptions: response.requestOptions,
+        maxBytes: kLrclibMaxResponseBytes,
+        chunkTimeout: const Duration(seconds: 10),
+      );
+      return jsonDecode(utf8.decode(bytes));
+    } on ExtractorException {
+      // Cap terlampaui (streaming atau Content-Length): bukan error
+      // jaringan, jangan sampai pemanggil me-retry.
+      throw const LrclibException(
+        LrclibFailureKind.invalidResponse,
+        'respons LRCLIB melebihi batas ukuran',
+      );
+    } on FormatException catch (e) {
+      throw LrclibException(
+        LrclibFailureKind.invalidResponse,
+        'JSON LRCLIB tidak valid: $e',
+      );
+    } on DioException {
+      if (cap.exceeded) {
+        throw const LrclibException(
+          LrclibFailureKind.invalidResponse,
+          'respons LRCLIB melebihi batas ukuran',
+        );
+      }
+      rethrow;
+    }
+  }
+
   Future<LrclibTrack?> _searchFallback({
     required String artist,
     required String title,
     Duration? duration,
   }) async {
     try {
-      final Response<dynamic> response = await _dio.get<dynamic>(
-        '/search',
-        queryParameters: <String, Object>{'q': '$artist $title'},
-      );
-      final Object? data = response.data;
+      final Object? data = await _getJson('/search', <String, Object>{
+        'q': '$artist $title',
+      });
       if (data is! List) {
         throw const LrclibException(
           LrclibFailureKind.invalidResponse,
           'respons /search bukan daftar',
         );
       }
+      // R3-L1: hanya 20 hasil pertama yang di-parse — daftar raksasa
+      // tidak pernah menjadi ribuan objek LrclibTrack di memori.
       final List<LrclibTrack> tracks = data
           .whereType<Map<String, dynamic>>()
+          .take(kLrclibMaxSearchResults)
           .map(LrclibTrack.fromJson)
           .toList(growable: false);
       if (tracks.isEmpty) return null;

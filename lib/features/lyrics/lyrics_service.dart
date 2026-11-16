@@ -14,12 +14,20 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:laras/data/database.dart';
 import 'package:laras/player/track.dart';
 
 import 'lrclib_client.dart';
+
+/// Batas ukuran lirik yang disimpan ke database (R3-L1): 256 KB per
+/// kolom (polos maupun tersinkron). Lirik lagu normal jauh di bawah
+/// ini; lirik di atas batas tetap ditampilkan di sesi ini tapi tidak
+/// disimpan, supaya satu baris DB raksasa tidak membengkakkan file
+/// database — dan terulang tiap lagu.
+const int kMaxStoredLyricsBytes = 256 * 1024;
 
 /// Status hasil pengambilan lirik.
 enum LyricsStatus {
@@ -154,22 +162,35 @@ class LyricsService {
         syncedLyrics: found.syncedLyrics,
       );
       if (library != null) {
-        try {
-          // Lagu wajib ada di tabel songs dulu (FK lyrics -> songs).
-          await library.upsertSong(
-            track.toSongsCompanion(),
-            artistNames: track.artistNames,
-            artistChannelIds: track.artistChannelIds,
-            album: track.albumCompanion,
+        // R3-L1: lirik raksasa tidak disimpan ke DB (satu baris raksasa
+        // per lagu = pembengkakan file DB). Lirik tetap tampil di sesi
+        // ini; sesi berikut mengambil ulang dari jaringan.
+        final int plainBytes = utf8.encode(found.plainLyrics ?? '').length;
+        final int syncedBytes = utf8.encode(found.syncedLyrics ?? '').length;
+        if (plainBytes > kMaxStoredLyricsBytes ||
+            syncedBytes > kMaxStoredLyricsBytes) {
+          debugPrint(
+            'Laras: lirik terlalu besar untuk disimpan '
+            '(polos $plainBytes byte, tersinkron $syncedBytes byte)',
           );
-          await library.saveLyrics(
-            songId: videoId,
-            lyrics: found.plainLyrics ?? '',
-            syncedLyrics: found.syncedLyrics,
-          );
-        } on Object catch (e) {
-          // Gagal menyimpan tidak membatalkan lirik yang sudah didapat.
-          debugPrint('Laras: simpan lirik gagal: $e');
+        } else {
+          try {
+            // Lagu wajib ada di tabel songs dulu (FK lyrics -> songs).
+            await library.upsertSong(
+              track.toSongsCompanion(),
+              artistNames: track.artistNames,
+              artistChannelIds: track.artistChannelIds,
+              album: track.albumCompanion,
+            );
+            await library.saveLyrics(
+              songId: videoId,
+              lyrics: found.plainLyrics ?? '',
+              syncedLyrics: found.syncedLyrics,
+            );
+          } on Object catch (e) {
+            // Gagal menyimpan tidak membatalkan lirik yang sudah didapat.
+            debugPrint('Laras: simpan lirik gagal: $e');
+          }
         }
       }
       return result;

@@ -76,10 +76,55 @@ const String kSearchJson = '''
 ]
 ''';
 
-Dio dioWith(FakeLrclibAdapter adapter) {
+Dio dioWith(HttpClientAdapter adapter) {
   final Dio dio = Dio(BaseOptions(baseUrl: 'https://lrclib.net/api'));
   dio.httpClientAdapter = adapter;
   return dio;
+}
+
+/// Adapter HTTP palsu: mengembalikan body dari daftar chunk, mencatat
+/// berapa chunk yang benar-benar ditarik (bukti batas streaming:
+/// baca berhenti begitu batas terlampaui, bukan setelah seluruh body
+/// masuk). Cermin `ChunkedAdapter` di tes Innertube (R1-M3).
+class ChunkedLrclibAdapter implements HttpClientAdapter {
+  ChunkedLrclibAdapter({
+    required this.chunks,
+    this.statusCode = 200,
+    this.contentLength,
+  });
+
+  final List<List<int>> chunks;
+  final int statusCode;
+  final int? contentLength;
+
+  /// Jumlah chunk yang sudah ditarik pemanggil.
+  int chunksConsumed = 0;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    final Stream<Uint8List> stream = Stream<Uint8List>.fromIterable(
+      chunks.map(Uint8List.fromList),
+    ).map((Uint8List chunk) {
+      chunksConsumed++;
+      return chunk;
+    });
+    return ResponseBody(
+      stream,
+      statusCode,
+      headers: <String, List<String>>{
+        if (contentLength != null)
+          Headers.contentLengthHeader: <String>['$contentLength'],
+        Headers.contentTypeHeader: <String>['application/json'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
 
 void main() {
@@ -226,6 +271,115 @@ void main() {
           ),
         ),
       );
+    });
+  });
+
+  group('LrclibClient: batas ukuran respons (R3-L1)', () {
+    test('respons /get 5 MB ditolak invalidResponse + baca berhenti di cap',
+        () async {
+      // JSON VALID 5 MB (lirik raksasa): tanpa cap, client lama
+      // men-decode seluruhnya dan mengembalikan lirik — tes ini GAGAL
+      // sebelum perbaikan R3-L1 dan LOLOS sesudahnya.
+      const int totalBytes = 5 * 1024 * 1024;
+      const int chunkBytes = 256 * 1024;
+      const String prefix = '{"id": 1, "plainLyrics": "';
+      const String suffix =
+          '", "syncedLyrics": null, "instrumental": false}';
+      final String padding =
+          'a' * (totalBytes - prefix.length - suffix.length);
+      final List<int> body = utf8.encode('$prefix$padding$suffix');
+      expect(body.length, totalBytes);
+      final List<List<int>> chunks = <List<int>>[];
+      for (int i = 0; i < body.length; i += chunkBytes) {
+        chunks.add(body.sublist(i, i + chunkBytes));
+      }
+      expect(chunks, hasLength(20));
+      final ChunkedLrclibAdapter adapter = ChunkedLrclibAdapter(
+        chunks: chunks,
+      );
+      final LrclibClient client = LrclibClient(dio: dioWith(adapter));
+      await expectLater(
+        client.fetchLyrics(artist: 'A', title: 'B'),
+        throwsA(
+          isA<LrclibException>().having(
+            (LrclibException e) => e.kind,
+            'kind',
+            LrclibFailureKind.invalidResponse,
+          ),
+        ),
+      );
+      // Cap 1 MB: 4 chunk @ 256 KB = 1 MB pas (belum lewat), chunk
+      // ke-5 mendorong ke 1,25 MB -> baca berhenti, 15 chunk sisanya
+      // tidak pernah ditarik.
+      expect(adapter.chunksConsumed, 5);
+    });
+
+    test('Content-Length di atas batas ditolak tanpa decode body', () async {
+      // Body kecil tapi header mendeklarasikan 5 MB: tanpa cap, client
+      // lama mengabaikan header dan mengembalikan lirik — tes ini GAGAL
+      // sebelum perbaikan R3-L1 dan LOLOS sesudahnya.
+      final ChunkedLrclibAdapter adapter = ChunkedLrclibAdapter(
+        chunks: <List<int>>[utf8.encode(kGetJson)],
+        contentLength: 5 * 1024 * 1024,
+      );
+      final LrclibClient client = LrclibClient(dio: dioWith(adapter));
+      await expectLater(
+        client.fetchLyrics(artist: 'A', title: 'B'),
+        throwsA(
+          isA<LrclibException>().having(
+            (LrclibException e) => e.kind,
+            'kind',
+            LrclibFailureKind.invalidResponse,
+          ),
+        ),
+      );
+    });
+
+    test('/search hanya mempertimbangkan 20 hasil pertama', () async {
+      // 30 hasil; yang durasinya cocok hanya nomor 25 (di luar cap).
+      // Tanpa cap, client lama mengembalikan nomor 25 — tes ini GAGAL
+      // sebelum perbaikan R3-L1 dan LOLOS sesudahnya (hasil pertama).
+      final List<Map<String, Object>> items =
+          List<Map<String, Object>>.generate(30, (int i) => <String, Object>{
+            'id': i + 1,
+            'duration': i == 24 ? 266 : 100,
+            'plainLyrics': 'Lirik ${i + 1}',
+          });
+      final FakeLrclibAdapter adapter = FakeLrclibAdapter(
+        bodyByPath: <String, String>{'/api/search': jsonEncode(items)},
+      );
+      adapter.statusByPath['/api/get'] = 404;
+      final LrclibClient client = LrclibClient(dio: dioWith(adapter));
+      final LrclibTrack? track = await client.fetchLyrics(
+        artist: 'Coldplay',
+        title: 'Yellow',
+        duration: const Duration(seconds: 266),
+      );
+      expect(track, isNotNull);
+      expect(track!.id, 1);
+      expect(track.plainLyrics, 'Lirik 1');
+    });
+
+    test('/search: hasil ke-20 yang cocok masih terpilih (batas cap)',
+        () async {
+      final List<Map<String, Object>> items =
+          List<Map<String, Object>>.generate(25, (int i) => <String, Object>{
+            'id': i + 1,
+            'duration': i == 19 ? 266 : 100,
+            'plainLyrics': 'Lirik ${i + 1}',
+          });
+      final FakeLrclibAdapter adapter = FakeLrclibAdapter(
+        bodyByPath: <String, String>{'/api/search': jsonEncode(items)},
+      );
+      adapter.statusByPath['/api/get'] = 404;
+      final LrclibClient client = LrclibClient(dio: dioWith(adapter));
+      final LrclibTrack? track = await client.fetchLyrics(
+        artist: 'Coldplay',
+        title: 'Yellow',
+        duration: const Duration(seconds: 266),
+      );
+      expect(track, isNotNull);
+      expect(track!.id, 20);
     });
   });
 }

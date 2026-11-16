@@ -135,7 +135,6 @@ void main() {
       databaseFileName: 'laras.sqlite',
       downloadsDir: dlDir,
       cacheDir: cacheDir,
-      internalLogFileName: 'laras-internal.log',
     );
   });
 

@@ -295,7 +295,7 @@
     "description": "Pesan saat offline dan lirik belum di-cache."
   },
   "@lyricsNotice": {
-    "description": "Pemberitahuan satu kali sebelum request lirik pertama."
+    "description": "Catatan di bawah lembar lirik yang selalu tampil setiap lirik dibuka."
   },
   "@lyricsSource": {
     "description": "P7: atribusi sumber lirik di bawah lirik."

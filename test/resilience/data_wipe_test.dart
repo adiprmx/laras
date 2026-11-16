@@ -45,17 +45,15 @@ void main() {
       databaseFileName: 'laras.sqlite',
       downloadsDir: downloads,
       cacheDir: cache,
-      internalLogFileName: 'laras-internal.log',
       onStopDownloads: onStop,
       onCloseDatabase: onClose,
     );
   }
 
-  test('menghapus DB + unduhan + cache + temp + log + preferensi', () async {
+  test('menghapus DB + unduhan + cache + temp + preferensi', () async {
     File('${documents.path}/laras.sqlite').writeAsStringSync('db');
     File('${documents.path}/laras.sqlite-wal').writeAsStringSync('wal');
     File('${documents.path}/laras.sqlite-shm').writeAsStringSync('shm');
-    File('${documents.path}/laras-internal.log').writeAsStringSync('log');
     File('${downloads.path}/lagu.m4a').writeAsStringSync('audio');
     File('${cache.path}/c1.opus').writeAsStringSync('cache');
     File('${temp.path}/sisa.tmp').writeAsStringSync('tmp');
@@ -75,12 +73,11 @@ void main() {
     expect(closed, isTrue);
     expect(result.fullySucceeded, isTrue);
     expect(result.errors, isEmpty);
-    expect(result.deletedFiles, 7);
+    expect(result.deletedFiles, 6);
     expect(result.deletedDirectories, 2);
     expect(result.preferencesCleared, isTrue);
     expect(File('${documents.path}/laras.sqlite').existsSync(), isFalse);
     expect(File('${documents.path}/laras.sqlite-wal').existsSync(), isFalse);
-    expect(File('${documents.path}/laras-internal.log').existsSync(), isFalse);
     expect(downloads.existsSync(), isFalse);
     expect(cache.existsSync(), isFalse);
     expect(File('${temp.path}/sisa.tmp').existsSync(), isFalse);

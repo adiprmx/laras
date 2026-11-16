@@ -41,13 +41,6 @@ Future<void> main() async {
     isWifiConnected: connectivity.isWifi,
     wifiChanged: connectivity.wifiChanged,
   );
-  InternalLog? internalLog;
-  try {
-    internalLog = InternalLog(directory: await getApplicationDocumentsDirectory());
-  } on Object {
-    // Log gagal dibuat: app tetap jalan tanpa log internal.
-    internalLog = null;
-  }
   // Status layanan: kanari memakai resolver yang sama dengan pemutar
   // (tidak mengganggu pemutaran — resolve kanari tidak menyentuh
   // antrean/engine), videoId dari config (jatuh ke lagu kanari bawaan).
@@ -166,7 +159,6 @@ Future<void> main() async {
       databaseFileName: kDatabaseFileName,
       downloadsDir: paths.downloadsDir,
       cacheDir: paths.cacheDir,
-      internalLogFileName: kInternalLogFileName,
       onStopDownloads: downloads.dispose,
       onCloseDatabase: db.close,
     );
@@ -223,7 +215,6 @@ Future<void> main() async {
       wifiGate: wifiGate,
       externalLinks: externalLinks,
       dataWipe: dataWipe,
-      internalLog: internalLog,
       lyricsService: lyricsService,
       deepLinkService: deepLinkService,
     ),
@@ -287,7 +278,6 @@ class LarasApp extends StatelessWidget {
     this.wifiGate,
     this.externalLinks,
     this.dataWipe,
-    this.internalLog,
     this.lyricsService,
     this.deepLinkService,
   });
@@ -309,7 +299,6 @@ class LarasApp extends StatelessWidget {
   final WifiGate? wifiGate;
   final ExternalLinks? externalLinks;
   final DataWipeService? dataWipe;
-  final InternalLog? internalLog;
 
   /// Layanan lirik (P7), null bila app dipompa di widget test tanpa
   /// service: tombol lirik disembunyikan, bukan crash.
@@ -358,7 +347,6 @@ class LarasApp extends StatelessWidget {
       wifiGate: wifiGate,
       externalLinks: externalLinks,
       dataWipe: dataWipe,
-      internalLog: internalLog,
       child: app,
     );
     if (service == null) return app;

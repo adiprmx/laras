@@ -7,7 +7,7 @@
 /// 3. hapus file database (`laras.sqlite`, `-wal`, `-shm`);
 /// 4. hapus direktori unduhan dan ruang lagu yang pernah diputar
 ///    (rekursif);
-/// 5. hapus isi direktori temp + file log internal;
+/// 5. hapus isi direktori temp;
 /// 6. hapus SELURUH preferensi ([SharedPreferences.clear]).
 ///
 /// CATATAN P8: tombol "Simpan salinan dulu" di dialog konfirmasi pertama
@@ -63,7 +63,6 @@ class DataWipeService {
     required String databaseFileName,
     required Directory downloadsDir,
     required Directory cacheDir,
-    required String internalLogFileName,
     Future<void> Function()? onStopDownloads,
     Future<void> Function()? onCloseDatabase,
   }) : _prefs = prefs,
@@ -72,7 +71,6 @@ class DataWipeService {
        _databaseFileName = databaseFileName,
        _downloadsDir = downloadsDir,
        _cacheDir = cacheDir,
-       _internalLogFileName = internalLogFileName,
        _onStopDownloads = onStopDownloads,
        _onCloseDatabase = onCloseDatabase;
 
@@ -82,7 +80,6 @@ class DataWipeService {
   final String _databaseFileName;
   final Directory _downloadsDir;
   final Directory _cacheDir;
-  final String _internalLogFileName;
   final Future<void> Function()? _onStopDownloads;
   final Future<void> Function()? _onCloseDatabase;
 
@@ -137,7 +134,7 @@ class DataWipeService {
       });
     }
 
-    // Isi direktori temp (file log internal ikut terhapus bila di sana).
+    // Isi direktori temp.
     await step('membersihkan direktori sementara', () async {
       if (_tempDir.existsSync()) {
         for (final FileSystemEntity entity in _tempDir.listSync()) {
@@ -150,15 +147,6 @@ class DataWipeService {
             deletedDirectories++;
           }
         }
-      }
-    });
-
-    // File log internal di direktori dokumen.
-    final File logFile = File('${_documentsDir.path}/$_internalLogFileName');
-    await step('menghapus log internal', () async {
-      if (logFile.existsSync()) {
-        logFile.deleteSync();
-        deletedFiles++;
       }
     });
 

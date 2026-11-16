@@ -96,8 +96,12 @@ class FakeScriptLoader extends PlayerScriptLoader {
       outerA: 5,
       outerB: 6,
       helperObjectName: 'h',
+      setMethodTableIndex: 8,
     ),
     preludeCode: '',
+    urlClassName: 'tf',
+    urlSetMethod: 'set',
+    urlSerializeMethod: 'gf',
   );
 
   @override
