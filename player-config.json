@@ -13,6 +13,13 @@
       "version": "2.20260708.05.00",
       "userAgent": "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
       "clientId": "2"
+    },
+    {
+      "name": "ANDROID_VR",
+      "version": "1.65.10",
+      "userAgent": "com.google.android.youtube/21.26.364 (Linux; U; Android 14; Pixel 8) gzip",
+      "clientId": "14",
+      "requiresScript": false
     }
   ],
   "playerHashes": {
