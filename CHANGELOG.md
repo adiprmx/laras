@@ -168,6 +168,18 @@ offers to save a backup first.
 
 ### Fixed
 
+- Backup file picker (P8 hotfix): the picker used
+  `registerForActivityResult`, which does not exist on this app's
+  activity — `FlutterActivity` in Flutter 3.47.8 extends plain
+  `android.app.Activity`, not `androidx.activity.ComponentActivity`
+  (proven by reading the superclass from the local flutter.jar; CI
+  run 43972411547 failed at `:app:compileDebugKotlin` with
+  "Unresolved reference 'registerForActivityResult'"). The picker
+  now uses the classic `startActivityForResult` +
+  `onActivityResult` pair (deprecated since API 30 but still
+  working on all Android versions). The Dart-side contract is
+  unchanged: same channel, same method, same result and error
+  codes (TOO_LARGE / READ_FAILED / BUSY / PICK_FAILED).
 - Solver prelude now collects the cipher chain's TRANSITIVE
   dependencies (BFS over helper objects/functions, capped at 64
   definitions) and the driver reads the player URL class, set

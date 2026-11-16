@@ -11,7 +11,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.StatFs
 import android.provider.OpenableColumns
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -21,6 +20,12 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 
 class MainActivity : AudioServiceActivity() {
+    companion object {
+        // Kode permintaan pemilih file salinan (SAF OpenDocument).
+        // Harus < 65536 dan tidak bentrok dengan kode plugin Flutter.
+        private const val REQUEST_PICK_BACKUP_FILE = 0xB001
+    }
+
     private val storageChannel = "id.my.adipmusic.laras/storage"
     private val connectivityChannel = "id.my.adipmusic.laras/connectivity"
     private val connectivityEventsChannel =
@@ -35,33 +40,18 @@ class MainActivity : AudioServiceActivity() {
     // Batas baca 10.000.001 byte (1 byte di atas batas Dart 10 MB):
     // file yang lebih besar dijawab TOO_LARGE sebelum seluruh isinya
     // dibaca ke memori.
+    //
+    // CATATAN: memakai API klasik startActivityForResult +
+    // onActivityResult (bukan Activity Result API). FlutterActivity di
+    // Flutter 3.47.8 extends android.app.Activity biasa, BUKAN
+    // androidx.activity.ComponentActivity, jadi registerForActivityResult
+    // tidak ada di kelas ini (CI run 43972411547: "Unresolved reference
+    // 'registerForActivityResult'"). API klasik deprecated sejak API 30
+    // tapi tetap berfungsi di semua versi Android; build tidak memakai
+    // warnings-as-errors sehingga peringatan deprecation tidak
+    // menggagalkan kompilasi. @Suppress("DEPRECATION") dipasang di
+    // launchFilePicker + onActivityResult.
     private var pendingPickResult: MethodChannel.Result? = null
-    private val pickFileLauncher =
-        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            val result = pendingPickResult
-            pendingPickResult = null
-            if (result == null) return@registerForActivityResult
-            if (uri == null) {
-                // Pengguna membatalkan pemilih dokumen.
-                result.success(null)
-                return@registerForActivityResult
-            }
-            try {
-                val name = queryDisplayName(uri)
-                val bytes = readCappedBytes(uri, 10_000_001L)
-                if (bytes == null) {
-                    result.error(
-                        "TOO_LARGE",
-                        "file lebih besar dari 10 MB",
-                        null,
-                    )
-                } else {
-                    result.success(mapOf("bytes" to bytes, "name" to name))
-                }
-            } catch (e: Exception) {
-                result.error("READ_FAILED", e.message, null)
-            }
-        }
 
     // P7 (MUST #13): tautan dalam. Sink EventChannel + tautan yang tiba
     // sebelum Dart mendengarkan (cold start / onNewIntent lebih dulu).
@@ -82,6 +72,55 @@ class MainActivity : AudioServiceActivity() {
                 deepLinkSink?.success(link) ?: run { pendingDeepLink = link }
             }
         }
+    }
+
+    // P8: hasil pemilih file salinan. super dipanggil dulu agar hasil
+    // untuk plugin Flutter tetap diteruskan (FlutterActivity meneruskan
+    // onActivityResult ke delegate plugin).
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_PICK_BACKUP_FILE) return
+        val result = pendingPickResult
+        pendingPickResult = null
+        if (result == null) return
+        val uri = if (resultCode == RESULT_OK) data?.data else null
+        if (uri == null) {
+            // Pengguna membatalkan pemilih dokumen.
+            result.success(null)
+            return
+        }
+        try {
+            val name = queryDisplayName(uri)
+            val bytes = readCappedBytes(uri, 10_000_001L)
+            if (bytes == null) {
+                result.error(
+                    "TOO_LARGE",
+                    "file lebih besar dari 10 MB",
+                    null,
+                )
+            } else {
+                result.success(mapOf("bytes" to bytes, "name" to name))
+            }
+        } catch (e: Exception) {
+            result.error("READ_FAILED", e.message, null)
+        }
+    }
+
+    // P8: membuka pemilih dokumen SAF untuk file salinan (JSON).
+    // type utama application/json + EXTRA_MIME_TYPES sebagai cadangan
+    // (beberapa pemilih file tidak mengenali application/json).
+    @Suppress("DEPRECATION")
+    private fun launchFilePicker() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf("application/json", "text/*"),
+            )
+        }
+        startActivityForResult(intent, REQUEST_PICK_BACKUP_FILE)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -428,9 +467,7 @@ class MainActivity : AudioServiceActivity() {
                     }
                     pendingPickResult = result
                     try {
-                        pickFileLauncher.launch(
-                            arrayOf("application/json", "text/*"),
-                        )
+                        launchFilePicker()
                     } catch (e: Exception) {
                         pendingPickResult = null
                         result.error("PICK_FAILED", e.message, null)
