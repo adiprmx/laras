@@ -2,6 +2,7 @@ package id.my.adipmusic.laras
 
 import android.content.Context
 import android.content.Intent
+import android.media.audiofx.Equalizer
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -20,6 +21,29 @@ class MainActivity : AudioServiceActivity() {
     private val connectivityEventsChannel =
         "id.my.adipmusic.laras/connectivity_events"
     private val externalChannel = "id.my.adipmusic.laras/external"
+    private val deepLinkChannel = "id.my.adipmusic.laras/deep_link"
+    private val equalizerChannel = "id.my.adipmusic.laras/equalizer"
+
+    // P7 (MUST #13): tautan dalam. Sink EventChannel + tautan yang tiba
+    // sebelum Dart mendengarkan (cold start / onNewIntent lebih dulu).
+    private var deepLinkSink: EventChannel.EventSink? = null
+    private var pendingDeepLink: String? = null
+    private var initialDeepLinkSent = false
+
+    // P7: equalizer perangkat (satu instance, ditempel ke session id
+    // yang dikirim Dart). Null bila belum di-init / tidak tersedia.
+    private var equalizer: Equalizer? = null
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // singleTop: tautan yang dibuka saat app sudah jalan tiba di sini.
+        if (intent.action == Intent.ACTION_VIEW) {
+            intent.data?.toString()?.let { link ->
+                deepLinkSink?.success(link) ?: run { pendingDeepLink = link }
+            }
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -167,6 +191,143 @@ class MainActivity : AudioServiceActivity() {
                             "androidVersion" to Build.VERSION.RELEASE,
                         ),
                     )
+                }
+                else -> result.notImplemented()
+            }
+        }
+        // P7 (MUST #13): tautan dalam — meneruskan URL tautan YouTube ke
+        // Dart (DeepLinkService). Cold start: intent awal dikirim sekali
+        // saat Dart pertama mendengarkan. Tautan yang tiba sebelum ada
+        // pendengar disimpan sebagai pending (bukan hilang).
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            deepLinkChannel,
+        ).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    deepLinkSink = events
+                    val pending = pendingDeepLink
+                    pendingDeepLink = null
+                    if (pending != null) {
+                        events?.success(pending)
+                    } else if (!initialDeepLinkSent) {
+                        initialDeepLinkSent = true
+                        intent?.takeIf { it.action == Intent.ACTION_VIEW }
+                            ?.data?.toString()?.let { link ->
+                                events?.success(link)
+                            }
+                    }
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    deepLinkSink = null
+                }
+            },
+        )
+        // P7: equalizer — android.media.audiofx.Equalizer ditempel ke
+        // audio session id yang dikirim Dart (dari just_audio). Semua
+        // angka dikirim sebagai Int (bukan Short): codec channel tidak
+        // mendukung Short. Bila perangkat tidak menyediakan efek ini,
+        // konstruktor Equalizer melempar dan init menjawab
+        // available=false (Dart menampilkan pesan jujur).
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            equalizerChannel,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "init" -> {
+                    val sessionId = call.argument<Int>("sessionId")
+                    if (sessionId == null) {
+                        result.error("BAD_SESSION", "sessionId kosong", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        equalizer?.release()
+                        val eq = Equalizer(0, sessionId)
+                        equalizer = eq
+                        val bandCount = eq.numberOfBands.toInt()
+                        val freqs = (0 until bandCount).map {
+                            eq.getCenterFreq(it.toShort())
+                        }
+                        val levels = (0 until bandCount).map {
+                            eq.getBandLevel(it.toShort()).toInt()
+                        }
+                        val presets = (0 until eq.numberOfPresets.toInt()).map {
+                            eq.getPresetName(it.toShort())
+                        }
+                        val range = eq.bandLevelRange
+                        result.success(
+                            mapOf(
+                                "available" to true,
+                                "centerFreqs" to freqs,
+                                "levels" to levels,
+                                "minLevel" to range[0].toInt(),
+                                "maxLevel" to range[1].toInt(),
+                                "presets" to presets,
+                                "currentPreset" to eq.currentPreset.toInt(),
+                            ),
+                        )
+                    } catch (e: Exception) {
+                        equalizer = null
+                        result.success(mapOf("available" to false))
+                    }
+                }
+                "setEnabled" -> {
+                    val eq = equalizer
+                    if (eq == null) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        eq.enabled = call.argument<Boolean>("enabled") ?: false
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "setPreset" -> {
+                    val eq = equalizer
+                    if (eq == null) {
+                        result.success(null)
+                        return@setMethodCallHandler
+                    }
+                    val preset = call.argument<Int>("preset") ?: -1
+                    try {
+                        eq.usePreset(preset.toShort())
+                        val bandCount = eq.numberOfBands.toInt()
+                        result.success(
+                            (0 until bandCount).map {
+                                eq.getBandLevel(it.toShort()).toInt()
+                            },
+                        )
+                    } catch (e: Exception) {
+                        result.success(null)
+                    }
+                }
+                "setBandLevel" -> {
+                    val eq = equalizer
+                    if (eq == null) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    val band = call.argument<Int>("band") ?: -1
+                    val level = call.argument<Int>("level") ?: 0
+                    try {
+                        eq.setBandLevel(band.toShort(), level.toShort())
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "release" -> {
+                    try {
+                        equalizer?.release()
+                    } catch (e: Exception) {
+                        // Lepas yang gagal tidak masalah: init berikutnya
+                        // membuat instance baru.
+                    }
+                    equalizer = null
+                    result.success(null)
                 }
                 else -> result.notImplemented()
             }

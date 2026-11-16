@@ -433,6 +433,19 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 50));
       }
       expect(adapter.fetchCount, 1);
+      // Tunggu refresh latar SELESAI (config baru tersimpan di cache),
+      // bukan hanya fetch-nya dimulai: fetchCount naik di AWAL fetch,
+      // sementara parse + tulis cache bisa tertinggal di bawah beban CPU
+      // (flaky K7, 16 Nov 2026 — assert versi baru gagal sesekali).
+      for (int i = 0; i < 100; i++) {
+        final String? cached = prefs.getString(kRemoteConfigCacheKey);
+        if (cached != null && cached.contains('1.20261111.00.00')) break;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      expect(
+        prefs.getString(kRemoteConfigCacheKey),
+        contains('1.20261111.00.00'),
+      );
       // Panggilan kedua memakai config baru.
       final RemotePlayerConfig second = await loader.current();
       expect(second.clients.first.version, '1.20261111.00.00');

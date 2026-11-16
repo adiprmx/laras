@@ -6436,6 +6436,427 @@ class DownloadJobsCompanion extends UpdateCompanion<DownloadJob> {
   }
 }
 
+class $PlaybackStateTable extends PlaybackState
+    with TableInfo<$PlaybackStateTable, PlaybackStateData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PlaybackStateTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _currentIndexMeta = const VerificationMeta(
+    'currentIndex',
+  );
+  @override
+  late final GeneratedColumn<int> currentIndex = GeneratedColumn<int>(
+    'current_index',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _positionMsMeta = const VerificationMeta(
+    'positionMs',
+  );
+  @override
+  late final GeneratedColumn<int> positionMs = GeneratedColumn<int>(
+    'position_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _shuffleEnabledMeta = const VerificationMeta(
+    'shuffleEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> shuffleEnabled = GeneratedColumn<bool>(
+    'shuffle_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("shuffle_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _repeatModeMeta = const VerificationMeta(
+    'repeatMode',
+  );
+  @override
+  late final GeneratedColumn<int> repeatMode = GeneratedColumn<int>(
+    'repeat_mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    currentIndex,
+    positionMs,
+    shuffleEnabled,
+    repeatMode,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'playback_state';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PlaybackStateData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('current_index')) {
+      context.handle(
+        _currentIndexMeta,
+        currentIndex.isAcceptableOrUnknown(
+          data['current_index']!,
+          _currentIndexMeta,
+        ),
+      );
+    }
+    if (data.containsKey('position_ms')) {
+      context.handle(
+        _positionMsMeta,
+        positionMs.isAcceptableOrUnknown(data['position_ms']!, _positionMsMeta),
+      );
+    }
+    if (data.containsKey('shuffle_enabled')) {
+      context.handle(
+        _shuffleEnabledMeta,
+        shuffleEnabled.isAcceptableOrUnknown(
+          data['shuffle_enabled']!,
+          _shuffleEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('repeat_mode')) {
+      context.handle(
+        _repeatModeMeta,
+        repeatMode.isAcceptableOrUnknown(data['repeat_mode']!, _repeatModeMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PlaybackStateData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PlaybackStateData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      currentIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}current_index'],
+      )!,
+      positionMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position_ms'],
+      )!,
+      shuffleEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}shuffle_enabled'],
+      )!,
+      repeatMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}repeat_mode'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PlaybackStateTable createAlias(String alias) {
+    return $PlaybackStateTable(attachedDatabase, alias);
+  }
+}
+
+class PlaybackStateData extends DataClass
+    implements Insertable<PlaybackStateData> {
+  /// Selalu 1: hanya ada satu status pemutar.
+  final int id;
+
+  /// Indeks lagu yang sedang diputar di urutan putar antrean.
+  final int currentIndex;
+
+  /// Posisi putar dalam lagu, milidetik.
+  final int positionMs;
+
+  /// Mode acak aktif saat status disimpan.
+  final bool shuffleEnabled;
+
+  /// Mode pengulangan saat status disimpan (lihat [RepeatModeValue]).
+  final int repeatMode;
+  final DateTime updatedAt;
+  const PlaybackStateData({
+    required this.id,
+    required this.currentIndex,
+    required this.positionMs,
+    required this.shuffleEnabled,
+    required this.repeatMode,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['current_index'] = Variable<int>(currentIndex);
+    map['position_ms'] = Variable<int>(positionMs);
+    map['shuffle_enabled'] = Variable<bool>(shuffleEnabled);
+    map['repeat_mode'] = Variable<int>(repeatMode);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  PlaybackStateCompanion toCompanion(bool nullToAbsent) {
+    return PlaybackStateCompanion(
+      id: Value(id),
+      currentIndex: Value(currentIndex),
+      positionMs: Value(positionMs),
+      shuffleEnabled: Value(shuffleEnabled),
+      repeatMode: Value(repeatMode),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory PlaybackStateData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PlaybackStateData(
+      id: serializer.fromJson<int>(json['id']),
+      currentIndex: serializer.fromJson<int>(json['currentIndex']),
+      positionMs: serializer.fromJson<int>(json['positionMs']),
+      shuffleEnabled: serializer.fromJson<bool>(json['shuffleEnabled']),
+      repeatMode: serializer.fromJson<int>(json['repeatMode']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'currentIndex': serializer.toJson<int>(currentIndex),
+      'positionMs': serializer.toJson<int>(positionMs),
+      'shuffleEnabled': serializer.toJson<bool>(shuffleEnabled),
+      'repeatMode': serializer.toJson<int>(repeatMode),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  PlaybackStateData copyWith({
+    int? id,
+    int? currentIndex,
+    int? positionMs,
+    bool? shuffleEnabled,
+    int? repeatMode,
+    DateTime? updatedAt,
+  }) => PlaybackStateData(
+    id: id ?? this.id,
+    currentIndex: currentIndex ?? this.currentIndex,
+    positionMs: positionMs ?? this.positionMs,
+    shuffleEnabled: shuffleEnabled ?? this.shuffleEnabled,
+    repeatMode: repeatMode ?? this.repeatMode,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  PlaybackStateData copyWithCompanion(PlaybackStateCompanion data) {
+    return PlaybackStateData(
+      id: data.id.present ? data.id.value : this.id,
+      currentIndex: data.currentIndex.present
+          ? data.currentIndex.value
+          : this.currentIndex,
+      positionMs: data.positionMs.present
+          ? data.positionMs.value
+          : this.positionMs,
+      shuffleEnabled: data.shuffleEnabled.present
+          ? data.shuffleEnabled.value
+          : this.shuffleEnabled,
+      repeatMode: data.repeatMode.present
+          ? data.repeatMode.value
+          : this.repeatMode,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlaybackStateData(')
+          ..write('id: $id, ')
+          ..write('currentIndex: $currentIndex, ')
+          ..write('positionMs: $positionMs, ')
+          ..write('shuffleEnabled: $shuffleEnabled, ')
+          ..write('repeatMode: $repeatMode, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    currentIndex,
+    positionMs,
+    shuffleEnabled,
+    repeatMode,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PlaybackStateData &&
+          other.id == this.id &&
+          other.currentIndex == this.currentIndex &&
+          other.positionMs == this.positionMs &&
+          other.shuffleEnabled == this.shuffleEnabled &&
+          other.repeatMode == this.repeatMode &&
+          other.updatedAt == this.updatedAt);
+}
+
+class PlaybackStateCompanion extends UpdateCompanion<PlaybackStateData> {
+  final Value<int> id;
+  final Value<int> currentIndex;
+  final Value<int> positionMs;
+  final Value<bool> shuffleEnabled;
+  final Value<int> repeatMode;
+  final Value<DateTime> updatedAt;
+  const PlaybackStateCompanion({
+    this.id = const Value.absent(),
+    this.currentIndex = const Value.absent(),
+    this.positionMs = const Value.absent(),
+    this.shuffleEnabled = const Value.absent(),
+    this.repeatMode = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  PlaybackStateCompanion.insert({
+    this.id = const Value.absent(),
+    this.currentIndex = const Value.absent(),
+    this.positionMs = const Value.absent(),
+    this.shuffleEnabled = const Value.absent(),
+    this.repeatMode = const Value.absent(),
+    required DateTime updatedAt,
+  }) : updatedAt = Value(updatedAt);
+  static Insertable<PlaybackStateData> custom({
+    Expression<int>? id,
+    Expression<int>? currentIndex,
+    Expression<int>? positionMs,
+    Expression<bool>? shuffleEnabled,
+    Expression<int>? repeatMode,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (currentIndex != null) 'current_index': currentIndex,
+      if (positionMs != null) 'position_ms': positionMs,
+      if (shuffleEnabled != null) 'shuffle_enabled': shuffleEnabled,
+      if (repeatMode != null) 'repeat_mode': repeatMode,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  PlaybackStateCompanion copyWith({
+    Value<int>? id,
+    Value<int>? currentIndex,
+    Value<int>? positionMs,
+    Value<bool>? shuffleEnabled,
+    Value<int>? repeatMode,
+    Value<DateTime>? updatedAt,
+  }) {
+    return PlaybackStateCompanion(
+      id: id ?? this.id,
+      currentIndex: currentIndex ?? this.currentIndex,
+      positionMs: positionMs ?? this.positionMs,
+      shuffleEnabled: shuffleEnabled ?? this.shuffleEnabled,
+      repeatMode: repeatMode ?? this.repeatMode,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (currentIndex.present) {
+      map['current_index'] = Variable<int>(currentIndex.value);
+    }
+    if (positionMs.present) {
+      map['position_ms'] = Variable<int>(positionMs.value);
+    }
+    if (shuffleEnabled.present) {
+      map['shuffle_enabled'] = Variable<bool>(shuffleEnabled.value);
+    }
+    if (repeatMode.present) {
+      map['repeat_mode'] = Variable<int>(repeatMode.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlaybackStateCompanion(')
+          ..write('id: $id, ')
+          ..write('currentIndex: $currentIndex, ')
+          ..write('positionMs: $positionMs, ')
+          ..write('shuffleEnabled: $shuffleEnabled, ')
+          ..write('repeatMode: $repeatMode, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$LarasDatabase extends GeneratedDatabase {
   _$LarasDatabase(QueryExecutor e) : super(e);
   late final LibrarySearch librarySearch = LibrarySearch(this);
@@ -6454,6 +6875,7 @@ abstract class _$LarasDatabase extends GeneratedDatabase {
   late final $LocalItemsTable localItems = $LocalItemsTable(this);
   late final $CacheEntriesTable cacheEntries = $CacheEntriesTable(this);
   late final $DownloadJobsTable downloadJobs = $DownloadJobsTable(this);
+  late final $PlaybackStateTable playbackState = $PlaybackStateTable(this);
   late final Index songsTitleIdx = Index(
     'songs_title_idx',
     'CREATE INDEX songs_title_idx ON songs (title)',
@@ -6527,6 +6949,7 @@ abstract class _$LarasDatabase extends GeneratedDatabase {
     localItems,
     cacheEntries,
     downloadJobs,
+    playbackState,
     songsTitleIdx,
     songsLibraryIdx,
     songsPlayedIdx,

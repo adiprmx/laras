@@ -22,7 +22,13 @@
 /// lagi, pemutar memakai file cache lewat [PlaybackCache.fileFor]
 /// (offline penuh). Eviction LRU berjalan setiap selesai memasukkan
 /// entri dan saat rekonsiliasi: entri paling lama tidak diakses dihapus
-/// sampai total di bawah batas. Penghapusan file memakai API SINKRON
+/// sampai total di bawah batas. Anggaran byte (R2-M2): satu fetch tidak
+/// pernah membuat cache melewati batas — file yang totalnya melebihi
+/// batas ditolak sebelum di-fetch, dan stream yang melewati sisa
+/// anggaran dihentikan di tengah jalan (`.part` dihapus). Fetch juga
+/// punya connectTimeout + timeout header + watchdog stall (R2-L4)
+/// supaya satu fetch yang menggantung tidak membekukan antrean cache.
+/// Penghapusan file memakai API SINKRON
 /// (`deleteSync`/`existsSync`): hapus file adalah operasi metadata
 /// sub-detik, dan API async-nya tidak pernah kembali bila dipanggil dari
 /// handler widget di tes widget (zona FakeAsync — terbukti menggantung,
@@ -91,16 +97,32 @@ class StreamCacheService implements PlaybackCache {
     int cacheLimitBytes = kDefaultCacheLimitBytes,
     bool Function()? isBusy,
     String? Function()? protectedVideoId,
+    Duration fetchHeaderTimeout = const Duration(seconds: 30),
+    Duration stallTimeout = const Duration(seconds: 60),
   }) : _library = library,
        _paths = paths,
-       _dio = dio ?? Dio(),
+       // R2-L4: Dio bawaan WAJIB punya connectTimeout eksplisit —
+       // `Dio()` polos berarti connectTimeout null = tanpa batas.
+       _dio =
+           dio ??
+           Dio(BaseOptions(connectTimeout: const Duration(seconds: 30))),
        _cacheLimitBytes = cacheLimitBytes,
        _isBusy = isBusy,
-       _protectedVideoId = protectedVideoId;
+       _protectedVideoId = protectedVideoId,
+       _fetchHeaderTimeout = fetchHeaderTimeout,
+       _stallTimeout = stallTimeout;
 
   final LibraryService _library;
   final DownloadPaths _paths;
   final Dio _dio;
+
+  /// Batas tunggu header respons fetch cache (R2-L4). Tes memakai nilai
+  /// kecil supaya server yang diam bisa dibuktikan tanpa menunggu 30 dtk.
+  final Duration _fetchHeaderTimeout;
+
+  /// Batas diam tanpa chunk sebelum fetch cache dibatalkan (R2-L4,
+  /// cermin watchdog stall DownloadService). Tes memakai nilai kecil.
+  final Duration _stallTimeout;
 
   /// Batas ruang lagu yang pernah diputar (diubah P6 lewat Pengaturan).
   int _cacheLimitBytes;
@@ -157,7 +179,14 @@ class StreamCacheService implements PlaybackCache {
       (CacheEntry a, CacheEntry b) => b.lastAccessed.compareTo(a.lastAccessed),
     );
     for (final CacheEntry entry in entries) {
-      final File file = File('${_paths.cacheDir.path}/${entry.filePath}');
+      // R2-L3: nama file dari database TIDAK PERNAH dipakai mentah —
+      // bentuk yang tidak cocok (mis. `../`) berarti entri rusak:
+      // hapus entrinya, jangan sentuh file apa pun di luar cache.
+      final File? file = _paths.cacheFileFromRelative(entry.filePath);
+      if (file == null) {
+        await _library.deleteCacheEntry(entry.key);
+        continue;
+      }
       bool usable = false;
       try {
         if (await file.exists()) {
@@ -212,15 +241,21 @@ class StreamCacheService implements PlaybackCache {
     // Sudah lengkap di cache: tidak perlu fetch lagi.
     final CacheEntry? existing = await _library.cacheEntry(key);
     if (existing != null) {
-      final File file = File('${_paths.cacheDir.path}/${existing.filePath}');
-      try {
-        if (await file.exists() &&
-            await file.length() == existing.sizeBytes) {
-          await _pump();
-          return;
+      // R2-L3: entri dengan nama file yang bentuknya tidak sah dianggap
+      // tidak lengkap — hapus entrinya, lalu fetch ulang seperti biasa.
+      final File? file = _paths.cacheFileFromRelative(existing.filePath);
+      if (file == null) {
+        await _library.deleteCacheEntry(existing.key);
+      } else {
+        try {
+          if (await file.exists() &&
+              await file.length() == existing.sizeBytes) {
+            await _pump();
+            return;
+          }
+        } on FileSystemException {
+          // Lanjut fetch ulang.
         }
-      } on FileSystemException {
-        // Lanjut fetch ulang.
       }
     }
     _fetchingKey = key;
@@ -236,6 +271,13 @@ class StreamCacheService implements PlaybackCache {
   }
 
   /// Unduh satu file cache (resume Range dari `.part` bila ada).
+  ///
+  /// Anggaran byte (R2-M2): satu file tidak pernah membuat cache
+  /// melewati batas — total yang dideklarasikan di atas batas cache
+  /// ditolak sebelum mengunduh (video 10 jam ≈ 720 MB tidak akan pernah
+  /// muat di batas 500 MB), dan stream yang melewati sisa anggaran
+  /// dihentikan di tengah jalan. Eviction pasca-fetch saja tidak cukup:
+  /// satu fetch raksasa menembus batas sendirian sebelum eviction jalan.
   Future<void> _fetch(
     String videoId,
     String url,
@@ -251,18 +293,33 @@ class StreamCacheService implements PlaybackCache {
     } on FileSystemException {
       downloaded = 0;
     }
-    final Response<ResponseBody> response = await _dio.get<ResponseBody>(
-      url,
-      options: Options(
-        responseType: ResponseType.stream,
-        headers: downloaded > 0
-            ? <String, String>{'Range': 'bytes=$downloaded-'}
-            : null,
-        // Timeout: cache fetch tidak boleh menggantung selamanya.
-        sendTimeout: const Duration(seconds: 30),
-        receiveTimeout: const Duration(seconds: 30),
-      ),
-    );
+    // R2-L4: CancelToken untuk watchdog stall + timeout header eksplisit.
+    // receiveTimeout Dio untuk ResponseType.stream hanya mengikat header
+    // (sama seperti di DownloadService), jadi stall sesudah header
+    // ditangani watchdog di bawah, bukan Dio.
+    final CancelToken cancelToken = CancelToken();
+    final Response<ResponseBody> response;
+    try {
+      response = await _dio
+          .get<ResponseBody>(
+            url,
+            options: Options(
+              responseType: ResponseType.stream,
+              headers: downloaded > 0
+                  ? <String, String>{'Range': 'bytes=$downloaded-'}
+                  : null,
+              sendTimeout: const Duration(seconds: 30),
+              receiveTimeout: const Duration(seconds: 30),
+            ),
+            cancelToken: cancelToken,
+          )
+          .timeout(_fetchHeaderTimeout);
+    } on TimeoutException {
+      // Header tidak kunjung tiba: batalkan request-nya supaya koneksi
+      // tidak tertinggal menggantung, lalu gagal (best-effort).
+      cancelToken.cancel('header fetch cache tidak kunjung tiba');
+      rethrow;
+    }
     final int? status = response.statusCode;
     final bool resumed = status == 206;
     if (status != 200 && status != 206) {
@@ -272,18 +329,65 @@ class StreamCacheService implements PlaybackCache {
       );
     }
     final int? total = _contentLength(response, resumed, downloaded);
+    // Anggaran fetch ini: sisa ruang cache sesudah eviction memberi
+    // tempat untuk file ini (bila total diketahui). File yang tidak
+    // muat — bahkan sesudah eviction — tidak di-fetch sama sekali.
+    final int budget;
+    try {
+      budget = await _fetchBudget(total);
+      if (downloaded > budget) {
+        // `.part` tertinggal sudah lebih besar dari anggaran (mis. batas
+        // cache diturunkan pengguna sesudah fetch terputus): hapus dan
+        // jangan lanjutkan.
+        _deleteFileSync(partFile);
+        throw StateError(
+          'cache $videoId tidak muat di anggaran $budget byte',
+        );
+      }
+    } on Object {
+      // Anggaran ditolak: batalkan request supaya koneksi tidak
+      // tertinggal menggantung (badan respons tidak akan dibaca).
+      cancelToken.cancel('fetch cache ditolak anggaran byte');
+      rethrow;
+    }
+    // Pengawas stall (R2-L4, cermin DownloadService): tidak ada chunk
+    // selama [_stallTimeout] berarti koneksi menggantung — batalkan
+    // supaya `_fetchingKey` lepas dan antrean cache tidak macet selamanya.
+    DateTime lastChunkAt = DateTime.now();
+    final Duration checkInterval = Duration(
+      milliseconds: _stallTimeout.inMilliseconds ~/ 4,
+    );
+    final Timer stallTimer = Timer.periodic(
+      checkInterval.inMilliseconds < 50
+          ? const Duration(milliseconds: 50)
+          : checkInterval,
+      (_) {
+        if (DateTime.now().difference(lastChunkAt) > _stallTimeout) {
+          cancelToken.cancel('stall fetch cache tanpa data');
+        }
+      },
+    );
     final IOSink sink = partFile.openWrite(
       mode: resumed ? FileMode.append : FileMode.write,
     );
     int received = resumed ? downloaded : 0;
+    bool capExceeded = false;
     try {
       await for (final List<int> chunk in response.data!.stream) {
+        lastChunkAt = DateTime.now();
         sink.add(chunk);
         // Flush per chunk (alasan sama seperti DownloadService: tanpa
         // ini .part di disk tetap 0 sampai close dan resume kehilangan
         // semua progress bila app mati di tengah fetch).
         await sink.flush();
         received += chunk.length;
+        // R2-M2: stream yang melewati anggaran dihentikan SEKARANG —
+        // pemeriksaan sesudah stream selesai tidak pernah tercapai bila
+        // stream tidak pernah selesai.
+        if (received > budget) {
+          capExceeded = true;
+          break;
+        }
       }
       await sink.close();
     } on Object catch (_) {
@@ -291,6 +395,19 @@ class StreamCacheService implements PlaybackCache {
         await sink.close();
       } on Object catch (_) {}
       rethrow;
+    } finally {
+      stallTimer.cancel();
+    }
+    if (capExceeded) {
+      // File ini tidak muat di cache: batalkan request-nya SEKARANG
+      // (tanpa ini soket tertinggal terbuka dan server terus menulis
+      // ratusan ms sesudah stream dihentikan) lalu hapus `.part`-nya
+      // supaya ruang langsung kembali, dan jangan catat entri manifest.
+      cancelToken.cancel('fetch cache melewati anggaran byte');
+      _deleteFileSync(partFile);
+      throw StateError(
+        'cache $videoId melewati anggaran $budget byte',
+      );
     }
     if (total != null && received != total) {
       throw StateError(
@@ -332,20 +449,71 @@ class StreamCacheService implements PlaybackCache {
     return length == null ? null : int.tryParse(length);
   }
 
+  /// Sisa anggaran byte untuk satu fetch (R2-M2).
+  ///
+  /// Bila [total] diketahui: file yang lebih besar dari batas cache
+  /// sendiri tidak akan pernah muat (tolak langsung); kalau tidak,
+  /// eviction memberi tempat dulu (target = batas − total), lalu
+  /// anggaran adalah sisa ruang sesudah eviction. Bila total tidak
+  /// diketahui, anggaran adalah sisa ruang saat ini. Melempar
+  /// [StateError] bila file tidak muat — pemanggil (_pump) menangkapnya
+  /// sebagai kegagalan best-effort.
+  Future<int> _fetchBudget(int? total) async {
+    if (total != null && total > _cacheLimitBytes) {
+      throw StateError(
+        'cache tidak muat: $total byte melebihi batas $_cacheLimitBytes',
+      );
+    }
+    if (total != null) {
+      await evictIfNeeded(targetBytes: _cacheLimitBytes - total);
+    } else {
+      await evictIfNeeded();
+    }
+    final StorageStats stats = await _library.storageStats();
+    final int budget = _cacheLimitBytes - stats.playedSongsBytes;
+    if (total != null && total > budget) {
+      // Eviction tidak bisa memberi cukup tempat (entri yang dilindungi
+      // lagu yang sedang diputar tidak boleh dihapus).
+      throw StateError(
+        'cache tidak muat: butuh $total byte, sisa $budget byte',
+      );
+    }
+    return budget;
+  }
+
+  /// Hapus file (sinkron, meniru penghapusan lain di layanan ini — API
+  /// async tidak pernah kembali dari zona FakeAsync tes widget).
+  /// Kegagalan diabaikan: rekonsiliasi membersihkan sisanya.
+  void _deleteFileSync(File file) {
+    try {
+      if (file.existsSync()) file.deleteSync();
+    } on FileSystemException {
+      // Rekonsiliasi membersihkan sisanya.
+    }
+  }
+
   /// Eviction LRU: hapus entri paling lama tidak diakses sampai total
   /// di bawah batas. Tidak pernah menyentuh direktori unduhan (hanya
   /// file di direktori cache yang dihapus) dan tidak pernah menghapus
   /// lagu yang sedang diputar.
-  Future<void> evictIfNeeded({Set<String>? excludeVideoIds}) async {
+  ///
+  /// [targetBytes] (R2-M2): bila diberikan, eviction berjalan sampai
+  /// total di bawah target itu, bukan di bawah batas — dipakai
+  /// [_fetchBudget] untuk memberi tempat bagi file yang akan di-fetch.
+  Future<void> evictIfNeeded({
+    Set<String>? excludeVideoIds,
+    int? targetBytes,
+  }) async {
+    final int target = targetBytes ?? _cacheLimitBytes;
     final Set<String> excluded = <String>{...?excludeVideoIds};
     final String? protected = _protectedVideoId?.call();
     if (protected != null) excluded.add(protected);
     final StorageStats stats = await _library.storageStats();
     int total = stats.playedSongsBytes;
-    if (total <= _cacheLimitBytes) return;
+    if (total <= target) return;
     final List<CacheEntry> entries = await _library.cacheEntriesByLru();
     for (final CacheEntry entry in entries) {
-      if (total <= _cacheLimitBytes) break;
+      if (total <= target) break;
       // Kunci adalah `${videoId}_$itag`; videoId sendiri bisa berisi `_`
       // (mis. 'NL8WUtq_NDY'), jadi pisahkan di `_` TERAKHIR.
       final int cut = entry.key.lastIndexOf('_');
@@ -353,13 +521,10 @@ class StreamCacheService implements PlaybackCache {
           ? entry.key
           : entry.key.substring(0, cut);
       if (excluded.contains(entryVideoId)) continue;
-      final File file = File('${_paths.cacheDir.path}/${entry.filePath}');
-      try {
-        if (file.existsSync()) file.deleteSync();
-      } on FileSystemException {
-        // File tidak bisa dihapus: lewati, entri tetap dihapus supaya
-        // manifest tidak menumpuk entri mati.
-      }
+      // R2-L3: nama file tidak sah -> lewati penghapusan file, entrinya
+      // tetap dihapus di bawah supaya manifest tidak menumpuk entri mati.
+      final File? file = _paths.cacheFileFromRelative(entry.filePath);
+      if (file != null) _deleteFileSync(file);
       await _library.deleteCacheEntry(entry.key);
       total -= entry.sizeBytes;
     }
@@ -370,12 +535,9 @@ class StreamCacheService implements PlaybackCache {
   Future<void> clearAll() async {
     final List<CacheEntry> entries = await _library.allCacheEntries();
     for (final CacheEntry entry in entries) {
-      final File file = File('${_paths.cacheDir.path}/${entry.filePath}');
-      try {
-        if (file.existsSync()) file.deleteSync();
-      } on FileSystemException {
-        // Lanjut: entri tetap dihapus.
-      }
+      // R2-L3: nama file tidak sah -> lewati penghapusan file.
+      final File? file = _paths.cacheFileFromRelative(entry.filePath);
+      if (file != null) _deleteFileSync(file);
     }
     await _library.deleteCacheEntries(
       entries.map((CacheEntry e) => e.key).toList(growable: false),
@@ -390,22 +552,22 @@ class StreamCacheService implements PlaybackCache {
     int staleEntries = 0;
     final List<CacheEntry> entries = await _library.allCacheEntries();
     for (final CacheEntry entry in entries) {
-      final File file = File('${_paths.cacheDir.path}/${entry.filePath}');
+      // R2-L3: nama file tidak sah -> entri dianggap basi, tanpa
+      // menyentuh file apa pun.
+      final File? file = _paths.cacheFileFromRelative(entry.filePath);
       bool ok = false;
-      try {
-        ok = await file.exists() &&
-            await file.length() == entry.sizeBytes;
-      } on FileSystemException {
-        ok = false;
+      if (file != null) {
+        try {
+          ok = await file.exists() &&
+              await file.length() == entry.sizeBytes;
+        } on FileSystemException {
+          ok = false;
+        }
       }
       if (!ok) {
         await _library.deleteCacheEntry(entry.key);
         staleEntries++;
-        try {
-          if (file.existsSync()) file.deleteSync();
-        } on FileSystemException {
-          // Coba lagi di rekonsiliasi berikutnya.
-        }
+        if (file != null) _deleteFileSync(file);
       }
     }
     final int orphans = await _deleteOrphanFiles();
@@ -455,12 +617,9 @@ class StreamCacheService implements PlaybackCache {
       videoId,
     );
     for (final CacheEntry entry in entries) {
-      final File file = File('${_paths.cacheDir.path}/${entry.filePath}');
-      try {
-        if (file.existsSync()) file.deleteSync();
-      } on FileSystemException {
-        // Lanjut: entri tetap dihapus.
-      }
+      // R2-L3: nama file tidak sah -> lewati penghapusan file.
+      final File? file = _paths.cacheFileFromRelative(entry.filePath);
+      if (file != null) _deleteFileSync(file);
       await _library.deleteCacheEntry(entry.key);
     }
   }

@@ -104,6 +104,13 @@ abstract class AudioPlayerPort {
   /// Nyalakan atau matikan lewati bagian hening. Android saja.
   Future<void> setSkipSilence(bool enabled);
 
+  /// ID sesi audio Android saat ini (untuk equalizer, P7). Null bila
+  /// belum ada sesi (belum ada lagu yang dimuat) atau di platform lain.
+  int? get androidAudioSessionId;
+
+  /// Perubahan ID sesi audio Android.
+  Stream<int?> get androidAudioSessionIdStream;
+
   /// Bebaskan semua resource. Port tidak bisa dipakai lagi sesudah ini.
   Future<void> dispose();
 }

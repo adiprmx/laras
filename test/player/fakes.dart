@@ -58,6 +58,8 @@ class FakeEngine implements PlayerEngine {
       StreamController<int?>.broadcast();
   final StreamController<EngineError> _error =
       StreamController<EngineError>.broadcast();
+  final StreamController<int?> _sessionId =
+      StreamController<int?>.broadcast();
 
   @override
   Stream<EngineState> get stateStream => _state.stream;
@@ -76,6 +78,21 @@ class FakeEngine implements PlayerEngine {
 
   @override
   Stream<EngineError> get errorStream => _error.stream;
+
+  /// ID sesi audio yang dikendalikan tes (P7, equalizer).
+  int? sessionId;
+
+  @override
+  int? get androidAudioSessionId => sessionId;
+
+  @override
+  Stream<int?> get androidAudioSessionIdStream => _sessionId.stream;
+
+  /// Ubah ID sesi audio dan siarkan ke pendengar.
+  void emitSessionId(int? id) {
+    sessionId = id;
+    _sessionId.add(id);
+  }
 
   /// Sumber yang saat ini ada di engine (diurutkan).
   List<EngineSource> sources = <EngineSource>[];
@@ -221,6 +238,7 @@ class FakeEngine implements PlayerEngine {
     await _buffered.close();
     await _index.close();
     await _error.close();
+    await _sessionId.close();
   }
 }
 
@@ -328,9 +346,14 @@ class FakeAudioPlayerPort implements AudioPlayerPort {
       StreamController<Duration>.broadcast();
   final StreamController<Duration> _buffered =
       StreamController<Duration>.broadcast();
+  final StreamController<int?> _sessionId =
+      StreamController<int?>.broadcast();
 
   Duration _positionValue = Duration.zero;
   Duration _bufferedValue = Duration.zero;
+
+  /// ID sesi audio yang dikendalikan tes (P7, equalizer).
+  int? sessionId;
 
   @override
   PlayerSnapshot get snapshot => _snapshot;
@@ -349,6 +372,18 @@ class FakeAudioPlayerPort implements AudioPlayerPort {
 
   @override
   Stream<Duration> get bufferedPositionStream => _buffered.stream;
+
+  @override
+  int? get androidAudioSessionId => sessionId;
+
+  @override
+  Stream<int?> get androidAudioSessionIdStream => _sessionId.stream;
+
+  /// Ubah ID sesi audio dan siarkan ke pendengar.
+  void emitSessionId(int? id) {
+    sessionId = id;
+    _sessionId.add(id);
+  }
 
   /// Ganti snapshot dan siarkan ke pendengar.
   void emitSnapshot(PlayerSnapshot snap) {
@@ -489,6 +524,7 @@ class FakeAudioPlayerPort implements AudioPlayerPort {
     await _state.close();
     await _position.close();
     await _buffered.close();
+    await _sessionId.close();
   }
 }
 

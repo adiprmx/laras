@@ -64,6 +64,13 @@ abstract class PlayerEngine {
   Stream<int?> get currentIndexStream;
   Stream<EngineError> get errorStream;
 
+  /// ID sesi audio Android saat ini (untuk equalizer, P7). Null bila
+  /// belum ada sesi (belum ada lagu yang dimuat) atau di platform lain.
+  int? get androidAudioSessionId;
+
+  /// Perubahan ID sesi audio Android.
+  Stream<int?> get androidAudioSessionIdStream;
+
   /// Muat daftar sumber sebagai satu playlist berurutan, mulai dari
   /// [initialIndex] dan [initialPosition].
   Future<void> setSources(
@@ -150,6 +157,16 @@ class JustAudioEngine implements PlayerEngine {
   @override
   Stream<EngineError> get errorStream =>
       _player.errorStream.map((ja.PlayerException e) => EngineError(code: e.code));
+
+  /// ID sesi audio Android dari just_audio (P7, untuk equalizer).
+  /// just_audio mengeksposnya lewat `androidAudioSessionId` (null bila
+  /// belum ada sesi).
+  @override
+  int? get androidAudioSessionId => _player.androidAudioSessionId;
+
+  @override
+  Stream<int?> get androidAudioSessionIdStream =>
+      _player.androidAudioSessionIdStream;
 
   @override
   Future<void> setSources(

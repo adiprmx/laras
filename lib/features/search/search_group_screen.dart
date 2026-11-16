@@ -123,6 +123,17 @@ class _SearchGroupScreenState extends State<SearchGroupScreen> {
         future: future,
         builder:
             (BuildContext context, AsyncSnapshot<LocalSearchResults> snapshot) {
+              // R2-L1: future yang error tidak pernah punya data — tanpa
+              // cabang ini, layar menampilkan shimmer selamanya.
+              if (snapshot.hasError) {
+                return EmptyState(
+                  icon: Icons.search_off_outlined,
+                  title: strings.noResultsTitle,
+                  body: strings.libraryFailed,
+                  actionLabel: strings.retry,
+                  onAction: _retry,
+                );
+              }
               if (!snapshot.hasData) {
                 return const Padding(
                   padding: EdgeInsets.all(AppSpacing.md),
@@ -149,6 +160,17 @@ class _SearchGroupScreenState extends State<SearchGroupScreen> {
     return FutureBuilder<CombinedSearch>(
       future: future,
       builder: (BuildContext context, AsyncSnapshot<CombinedSearch> snapshot) {
+        // R2-L1: future yang error tidak pernah punya data — tanpa
+        // cabang ini, layar menampilkan shimmer selamanya.
+        if (snapshot.hasError) {
+          return EmptyState(
+            icon: Icons.search_off_outlined,
+            title: strings.noResultsTitle,
+            body: strings.onlineResultsFailed,
+            actionLabel: strings.retry,
+            onAction: _retry,
+          );
+        }
         if (!snapshot.hasData) {
           return const Padding(
             padding: EdgeInsets.all(AppSpacing.md),

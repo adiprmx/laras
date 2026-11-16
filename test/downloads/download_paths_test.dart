@@ -106,6 +106,49 @@ void main() {
     });
   });
 
+  group('cacheFileFromRelative (R2-L3)', () {
+    test('nama relatif valid -> File di direktori cache', () {
+      final File? file = paths.cacheFileFromRelative('NL8WUtq_NDY_251.opus');
+      expect(file, isNotNull);
+      expect(file!.path, endsWith('NL8WUtq_NDY_251.opus'));
+    });
+
+    test('path traversal -> null', () {
+      expect(
+        paths.cacheFileFromRelative('../../databases/laras.sqlite'),
+        isNull,
+      );
+      expect(paths.cacheFileFromRelative('../x_251.opus'), isNull);
+      expect(paths.cacheFileFromRelative('a/b_251.opus'), isNull);
+    });
+
+    test('tanpa itag atau itag bukan angka -> null', () {
+      expect(paths.cacheFileFromRelative('abc123.opus'), isNull);
+      expect(paths.cacheFileFromRelative('abc_xyz.opus'), isNull);
+      expect(paths.cacheFileFromRelative('abc_251.opus.bak'), isNull);
+    });
+
+    test('videoId ber-underscore tetap valid (itag di _ terakhir)', () {
+      expect(
+        paths.cacheFileFromRelative('NL8WUtq_NDY_140.m4a'),
+        isNotNull,
+      );
+    });
+
+    test('isValidDownloadRelativePath menolak traversal', () {
+      expect(
+        DownloadPaths.isValidDownloadRelativePath(
+          '../../databases/laras.sqlite',
+        ),
+        isFalse,
+      );
+      expect(
+        DownloadPaths.isValidDownloadRelativePath('abc123.opus'),
+        isTrue,
+      );
+    });
+  });
+
   group('validasi anti path-traversal', () {
     test('videoId dengan slash ditolak', () {
       expect(

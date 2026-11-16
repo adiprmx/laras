@@ -117,6 +117,13 @@ class ExtractorDownloadUrlSource implements DownloadUrlSource {
     }
     await _innertube.ensureVisitorData(clients.first);
 
+    // R2-L5: allowlist hash player dari config remote (atau bawaan bila
+    // config tidak membawa hash — loader yang memutuskan), diteruskan ke
+    // semua pemuatan script, sama seperti orkestrator pemutar. Tanpa ini,
+    // hash player baru yang masuk lewat config berlaku untuk pemutaran
+    // tapi tidak untuk unduhan.
+    final Set<String> allowedHashes = config.playerHashes.keys.toSet();
+
     // signatureTimestamp WAJIB di request player pertama client web
     // (tanpa sts, server membalas UNPLAYABLE — bukti P1). Gagal memuat
     // script tidak langsung menggagalkan resolve: masuk mode terdegradasi
@@ -125,7 +132,9 @@ class ExtractorDownloadUrlSource implements DownloadUrlSource {
     ExtractorException? scriptError;
     if (signatureTimestamp == null) {
       try {
-        final PlayerScript script = await _scriptLoader.load();
+        final PlayerScript script = await _scriptLoader.load(
+          allowedHashes: allowedHashes,
+        );
         signatureTimestamp = script.signatureTimestamp;
       } on ExtractorException catch (e) {
         scriptError = e;
@@ -135,8 +144,13 @@ class ExtractorDownloadUrlSource implements DownloadUrlSource {
     ExtractorException? lastError;
     ExtractorException? lastNonNetworkError;
     bool anyClientTried = false;
+    // R2-L5 (pola P0-2 orkestrator): mode terdegradasi bisa masuk di
+    // tengah loop — flag ini, bukan scriptError saja, yang menggerakkan
+    // lewati client butuh-script. Versi lama `break` saat hash tak
+    // dikenal dan client bebas-script (VR) tidak pernah dicoba.
+    bool degraded = scriptError != null;
     for (final ClientDefinition client in clients) {
-      if (scriptError != null && client.requiresScript) continue;
+      if (degraded && client.requiresScript) continue;
       anyClientTried = true;
       try {
         return await _tryClient(
@@ -144,11 +158,19 @@ class ExtractorDownloadUrlSource implements DownloadUrlSource {
           client,
           quality: quality,
           signatureTimestamp: signatureTimestamp,
+          allowedHashes: allowedHashes,
         );
       } on ExtractorException catch (e) {
         lastError = e;
         if (!e.isNetworkError) lastNonNetworkError = e;
-        if (e.cause == ResolveFailureCause.unknownPlayerHash) break;
+        // Hash player tak dikenal adalah masalah script, bukan client:
+        // client butuh-script lain tidak akan membantu — tapi client
+        // bebas-script (VR) tidak butuh script sama sekali, jadi loop
+        // TIDAK berhenti: masuk mode terdegradasi dan lanjut (P0-2).
+        if (e.cause == ResolveFailureCause.unknownPlayerHash) {
+          degraded = true;
+          scriptError ??= e;
+        }
       }
     }
     if (!anyClientTried && scriptError != null) throw scriptError;
@@ -166,6 +188,7 @@ class ExtractorDownloadUrlSource implements DownloadUrlSource {
     ClientDefinition client, {
     required DownloadQuality quality,
     required int? signatureTimestamp,
+    required Set<String> allowedHashes,
   }) async {
     ParsedPlayerResponse parsed = await _innertube.fetchPlayer(
       videoId,
@@ -177,7 +200,9 @@ class ExtractorDownloadUrlSource implements DownloadUrlSource {
       final String? freshVd = await _innertube.refreshVisitorData(client);
       int? sts = signatureTimestamp;
       try {
-        final PlayerScript script = await _scriptLoader.load();
+        final PlayerScript script = await _scriptLoader.load(
+          allowedHashes: allowedHashes,
+        );
         sts = script.signatureTimestamp;
       } on ExtractorException {
         // Script gagal dimuat: ulangi dengan sts lama (atau tanpa sts).
@@ -219,6 +244,18 @@ class ExtractorDownloadUrlSource implements DownloadUrlSource {
       );
     }
     if (format.hasDirectUrl) {
+      // R2-M1: URL langsung dari respons player WAJIB lolos allowlist
+      // host sebelum dikembalikan — tanpa ini, respons yang dimanipulasi
+      // bisa mengarahkan pengunduh ke host arbitrer (R1-M1 terulang di
+      // kode cermin). Jalur ini adalah jalur client bebas-script (VR),
+      // yang justru paling sering dipakai saat mode terdegradasi.
+      if (!isAllowedStreamUrl(format.url!)) {
+        throw ExtractorException(
+          ResolveFailureCause.parseFailed,
+          clientName: client.name,
+          detail: 'URL langsung di luar host yang diizinkan',
+        );
+      }
       return DownloadUrl(
         url: format.url!,
         itag: format.itag,
@@ -228,8 +265,20 @@ class ExtractorDownloadUrlSource implements DownloadUrlSource {
         contentLength: format.contentLength,
       );
     }
-    final PlayerScript script = await _scriptLoader.load();
+    final PlayerScript script = await _scriptLoader.load(
+      allowedHashes: allowedHashes,
+    );
     final String finalUrl = await _solver.solve(script: script, format: format);
+    // Defense in depth (cermin orkestrator): solver sendiri sudah
+    // memvalidasi hasilnya, tapi periksa ulang di sini supaya satu
+    // regresi di solver tidak membuka lagi jalur unduhan.
+    if (!isAllowedStreamUrl(finalUrl)) {
+      throw ExtractorException(
+        ResolveFailureCause.parseFailed,
+        clientName: client.name,
+        detail: 'URL hasil solver di luar host yang diizinkan',
+      );
+    }
     return DownloadUrl(
       url: finalUrl,
       itag: format.itag,

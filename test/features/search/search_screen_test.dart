@@ -4,6 +4,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:laras/core/widgets/loading_rows.dart';
 import 'package:laras/data/database.dart';
 import 'package:laras/extractor/extractor.dart';
 import 'package:laras/features/onboarding/onboarding_flow.dart';
@@ -282,4 +283,28 @@ void main() {
     expect(find.text('Noah Online'), findsNothing);
     expect(find.text(strings.recentSearches), findsOneWidget);
   });
+
+  testWidgets('R2-L1: _submit yang error menampilkan banner gagal, bukan '
+      'macet di loading', (WidgetTester tester) async {
+    setPhoneViewport(tester);
+    searchService = _ThrowingSearchService(api: api, library: library);
+    final AppLocalizations strings = await pumpSearch(tester);
+    await submitQuery(tester, 'noah');
+    // Banner kegagalan tampil (hanya mungkin bila _loading kembali
+    // false dan _results terisi) — tanpa try/catch di _submit, layar
+    // macet di LoadingRows selamanya.
+    expect(find.text(strings.onlineResultsFailed), findsOneWidget);
+    expect(find.byType(LoadingRows), findsNothing);
+  });
+}
+
+/// Layanan yang search-nya selalu melempar StateError (R2-L1:
+/// mensimulasikan error tak terduga yang lolos dari SearchService).
+class _ThrowingSearchService extends SearchService {
+  _ThrowingSearchService({required super.api, super.library});
+
+  @override
+  Future<CombinedSearch> search(String query, {String? params}) async {
+    throw StateError('database rusak (tes)');
+  }
 }

@@ -11,6 +11,21 @@ import 'package:laras/features/search/search_service.dart';
 import '../../data/test_database.dart';
 import 'fake_online_api.dart';
 
+/// LibraryService yang gagal MENCATAT riwayat (addSearchQuery melempar),
+/// tapi operasi lain jalan normal — menguji pemisahan try/catch R2-L1.
+/// Menutup database TIDAK dipakai: pada database in-memory drift,
+/// `db.close()` ternyata tidak membuat addSearchQuery melempar, jadi
+/// tes versi itu lolos palsu sebelum perbaikan (terbukti di verifikasi
+/// fail-before Blue 2).
+class _ThrowingHistoryLibrary extends LibraryService {
+  _ThrowingHistoryLibrary(super.db);
+
+  @override
+  Future<void> addSearchQuery(String query) async {
+    throw StateError('riwayat gagal dicatat');
+  }
+}
+
 void main() {
   late LarasDatabase db;
   late LibraryService library;
@@ -170,5 +185,56 @@ void main() {
     final CombinedSearch result = await noLibrary.search('noah');
     expect(result.local.isEmpty, isTrue);
     expect(result.online!.songs.length, 1);
+  });
+
+  group('R2-L1: error non-ExtractorException tidak pernah lolos', () {
+    test('search: api melempar StateError -> kegagalan server, hasil '
+        'lokal tetap ada', () async {
+      await seedLocal();
+      api.searchThrow = StateError('bug tak terduga di API');
+      final CombinedSearch result = await service.search('noah');
+      expect(result.failure, OnlineFailure.server);
+      expect(result.online, isNull);
+      expect(result.local.songs.length, 1);
+    });
+
+    test('browse: api melempar StateError -> kegagalan server', () async {
+      api.browseThrow = StateError('bug tak terduga di API');
+      final BrowseOutcome outcome = await service.browse('UCtest1');
+      expect(outcome.isSuccess, isFalse);
+      expect(outcome.failure, OnlineFailure.server);
+    });
+
+    test('browseHome: api melempar StateError sesudah cache ada -> data '
+        'terakhir + kegagalan server', () async {
+      api.browsePage = const BrowsePage(
+        title: '',
+        shelves: <BrowseShelf>[BrowseShelf(title: 'Rak Satu')],
+      );
+      await service.browseHome();
+      api.browseThrow = StateError('bug tak terduga di API');
+      final BrowseOutcome outcome =
+          await service.browseHome(forceRefresh: true);
+      expect(outcome.isSuccess, isTrue);
+      expect(outcome.fromCache, isTrue);
+      expect(outcome.failure, OnlineFailure.server);
+    });
+
+    test('riwayat gagal dicatat tidak membuang hasil pencarian', () async {
+      // addSearchQuery melempar (DB rusak), tapi pencarian online
+      // (API palsu) tetap berhasil — hasilnya harus tampil.
+      api.results = const GroupedSearchResults(
+        songs: <SearchSong>[
+          SearchSong(videoId: 'on1', title: 'Noah Online'),
+        ],
+      );
+      final SearchService failingHistory = SearchService(
+        api: api,
+        library: _ThrowingHistoryLibrary(db),
+      );
+      final CombinedSearch result = await failingHistory.search('noah');
+      expect(result.online!.songs.length, 1);
+      expect(result.failure, isNull);
+    });
   });
 }

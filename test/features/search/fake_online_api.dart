@@ -24,6 +24,8 @@ class FakeOnlineApi implements OnlineSearchApi {
     this.searchError,
     this.suggestError,
     this.browseError,
+    this.searchThrow,
+    this.browseThrow,
   });
 
   GroupedSearchResults results;
@@ -32,6 +34,11 @@ class FakeOnlineApi implements OnlineSearchApi {
   ExtractorException? searchError;
   ExtractorException? suggestError;
   ExtractorException? browseError;
+
+  /// Error BUKAN ExtractorException yang dilempar search/browse (R2-L1:
+  /// mis. StateError dari database atau bug tak terduga di API).
+  Object? searchThrow;
+  Object? browseThrow;
 
   int searchCalls = 0;
   int suggestCalls = 0;
@@ -43,6 +50,7 @@ class FakeOnlineApi implements OnlineSearchApi {
   Future<GroupedSearchResults> search(String query, {String? params}) async {
     searchCalls++;
     lastSearchParams = params;
+    if (searchThrow != null) throw searchThrow!;
     if (searchError != null) throw searchError!;
     return results;
   }
@@ -51,6 +59,7 @@ class FakeOnlineApi implements OnlineSearchApi {
   Future<BrowsePage> browse(String browseId, {String? params}) async {
     browseCalls++;
     lastBrowseId = browseId;
+    if (browseThrow != null) throw browseThrow!;
     if (browseError != null) throw browseError!;
     return browsePage ?? const BrowsePage(title: '');
   }

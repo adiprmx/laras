@@ -151,6 +151,45 @@ class _TestServer {
   Future<void> stop() async => _server?.close(force: true);
 }
 
+/// Server yang mengalirkan byte TANPA Content-Length (chunked): total
+/// tidak diketahui klien dari header — satu-satunya rem adalah cap
+/// byte R2-M2 (total dari resolver + margin, atau batas absolut).
+class _ChunkedServer {
+  _ChunkedServer({required this.totalBytes});
+
+  final int totalBytes;
+  int requests = 0;
+  HttpServer? _server;
+
+  Future<Uri> start() async {
+    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    _server!.listen((HttpRequest request) async {
+      requests++;
+      final HttpResponse response = request.response
+        ..statusCode = HttpStatus.ok
+        ..bufferOutput = false;
+      try {
+        int sent = 0;
+        while (sent < totalBytes) {
+          final int size = (totalBytes - sent).clamp(0, 1024);
+          response.add(List<int>.filled(size, 9));
+          await response.flush();
+          sent += size;
+        }
+        await response.close();
+      } on Object catch (_) {
+        // Klien membatalkan di tengah stream (cap tercapai): abaikan.
+        try {
+          await request.response.close();
+        } on Object catch (_) {}
+      }
+    });
+    return Uri.parse('http://127.0.0.1:${_server!.port}');
+  }
+
+  Future<void> stop() async => _server?.close(force: true);
+}
+
 Future<DownloadJob?> _waitForJob(
   LibraryService library,
   String songId,
@@ -184,6 +223,8 @@ void main() {
 
   Future<DownloadService> buildService({
     required _FakeUrlSource urlSource,
+    int? maxDownloadBytes,
+    bool allowLocalServer = true,
   }) async {
     final DownloadService created = DownloadService(
       library: library,
@@ -191,6 +232,11 @@ void main() {
       urlSource: urlSource,
       freeSpace: freeSpace,
       backoffFor: (_) => Duration.zero,
+      // Server tes adalah HTTP lokal (127.0.0.1): validator allowlist
+      // produksi (R2-M1) dilonggarkan di sini, kecuali tes sabuk R2-M1
+      // yang sengaja memakai validator bawaan (allowLocalServer false).
+      urlValidator: allowLocalServer ? (_) => true : null,
+      maxDownloadBytes: maxDownloadBytes ?? kMaxDownloadBytes,
     );
     service = created;
     created.start();
@@ -688,5 +734,172 @@ void main() {
     } finally {
       await server.stop();
     }
+  });
+
+  group('R2-M1: sabuk kedua validasi URL di layanan unduhan', () {
+    test('URL di luar host yang diizinkan tidak pernah di-fetch', () async {
+      final _TestServer server = _TestServer(bytes: <int>[]);
+      await server.start();
+      try {
+        // Validator bawaan (allowlist produksi), bukan yang longgar.
+        final DownloadService downloads = await buildService(
+          urlSource: _FakeUrlSource(
+            baseUrl: 'https://evil.example',
+            contentLength: 1000,
+          ),
+          allowLocalServer: false,
+        );
+        expect(await downloads.enqueue(_track('aaa11111111')), isTrue);
+        final DownloadJob? job = await _waitForJob(
+          library,
+          'aaa11111111',
+          (DownloadJob? j) => j?.status == DownloadJobStatus.failed,
+        );
+        // Gagal permanen tanpa retry: URL tidak sah tidak akan sah.
+        expect(job!.errorMessage, DownloadFailure.unplayable);
+        expect(job.attempts, 1);
+        expect(server.requests, 0);
+        expect(
+          await paths.downloadFile('aaa11111111', 'opus').exists(),
+          isFalse,
+        );
+        expect(
+          await paths.downloadPartFile('aaa11111111', 'opus').exists(),
+          isFalse,
+        );
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  group('R2-M2: cap byte unduhan', () {
+    test('total yang dideklarasikan di atas cap ditolak tanpa request',
+        () async {
+      final List<int> bytes = List<int>.generate(200, (int i) => i % 256);
+      final _TestServer server = _TestServer(bytes: bytes);
+      final Uri base = await server.start();
+      try {
+        final DownloadService downloads = await buildService(
+          urlSource: _FakeUrlSource(
+            baseUrl: base.toString(),
+            contentLength: 20 * 1024,
+          ),
+          maxDownloadBytes: 10 * 1024,
+        );
+        expect(await downloads.enqueue(_track('aaa11111111')), isTrue);
+        final DownloadJob? job = await _waitForJob(
+          library,
+          'aaa11111111',
+          (DownloadJob? j) => j?.status == DownloadJobStatus.failed,
+        );
+        expect(job!.errorMessage, DownloadFailure.unplayable);
+        expect(job.attempts, 1);
+        expect(server.requests, 0, reason: 'ditolak sebelum mengunduh');
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test('total dari header respons di atas cap ditolak sebelum membaca '
+        'badan', () async {
+      final List<int> bytes = List<int>.generate(20 * 1024, (int i) => i % 256);
+      final _TestServer server = _TestServer(bytes: bytes);
+      final Uri base = await server.start();
+      try {
+        final DownloadService downloads = await buildService(
+          urlSource: _FakeUrlSource(
+            baseUrl: base.toString(),
+            contentLength: null,
+          ),
+          maxDownloadBytes: 10 * 1024,
+        );
+        expect(await downloads.enqueue(_track('aaa11111111')), isTrue);
+        final DownloadJob? job = await _waitForJob(
+          library,
+          'aaa11111111',
+          (DownloadJob? j) => j?.status == DownloadJobStatus.failed,
+        );
+        expect(job!.errorMessage, DownloadFailure.unplayable);
+        expect(job.attempts, 1);
+        expect(server.requests, 1, reason: 'header dibaca, badan tidak');
+        expect(
+          await paths.downloadFile('aaa11111111', 'opus').exists(),
+          isFalse,
+        );
+        expect(
+          await paths.downloadPartFile('aaa11111111', 'opus').exists(),
+          isFalse,
+        );
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test('stream tanpa Content-Length yang melewati cap dihentikan di '
+        'tengah jalan, .part dihapus', () async {
+      // Server mengalirkan 100 KB chunked; resolver mendeklarasikan
+      // 5 KB; cap tes 10 KB -> stream dihentikan di ~10 KB.
+      final _ChunkedServer server = _ChunkedServer(totalBytes: 100 * 1024);
+      final Uri base = await server.start();
+      try {
+        final DownloadService downloads = await buildService(
+          urlSource: _FakeUrlSource(
+            baseUrl: base.toString(),
+            contentLength: 5 * 1024,
+          ),
+          maxDownloadBytes: 10 * 1024,
+        );
+        expect(await downloads.enqueue(_track('aaa11111111')), isTrue);
+        final DownloadJob? job = await _waitForJob(
+          library,
+          'aaa11111111',
+          (DownloadJob? j) => j?.status == DownloadJobStatus.failed,
+        );
+        expect(job!.errorMessage, DownloadFailure.unplayable);
+        expect(job.attempts, 1, reason: 'tanpa retry: server berbohong');
+        expect(server.requests, 1);
+        // .part dihapus (bukan dipertahankan 10 KB): ruang kembali.
+        expect(
+          await paths.downloadPartFile('aaa11111111', 'opus').exists(),
+          isFalse,
+        );
+        expect(
+          await paths.downloadFile('aaa11111111', 'opus').exists(),
+          isFalse,
+        );
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test('stream tanpa total yang dideklarasikan memakai batas absolut',
+        () async {
+      final _ChunkedServer server = _ChunkedServer(totalBytes: 100 * 1024);
+      final Uri base = await server.start();
+      try {
+        final DownloadService downloads = await buildService(
+          urlSource: _FakeUrlSource(
+            baseUrl: base.toString(),
+            contentLength: null,
+          ),
+          maxDownloadBytes: 10 * 1024,
+        );
+        expect(await downloads.enqueue(_track('aaa11111111')), isTrue);
+        final DownloadJob? job = await _waitForJob(
+          library,
+          'aaa11111111',
+          (DownloadJob? j) => j?.status == DownloadJobStatus.failed,
+        );
+        expect(job!.errorMessage, DownloadFailure.unplayable);
+        expect(job.attempts, 1);
+        expect(
+          await paths.downloadPartFile('aaa11111111', 'opus').exists(),
+          isFalse,
+        );
+      } finally {
+        await server.stop();
+      }
+    });
   });
 }

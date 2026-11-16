@@ -208,12 +208,26 @@ class SearchService {
       // Gabungkan artis pseudo-id ke channelId di latar (tidak
       // memblokir hasil): data pencarian memberi channelId asli.
       unawaited(_mergeArtistsFromResults(grouped));
+      // R2-L1: pencatatan riwayat adalah efek samping — kegagalan
+      // database di sini tidak boleh membuang hasil pencarian yang
+      // sudah berhasil (dan tidak boleh lolos ke UI sebagai error
+      // yang membuat layar macet di loading).
       if (library != null) {
-        await library.addSearchQuery(trimmed);
+        try {
+          await library.addSearchQuery(trimmed);
+        } catch (_) {
+          // Riwayat gagal dicatat: hasil tetap tampil.
+        }
       }
       return CombinedSearch(local: local, online: grouped);
     } on ExtractorException catch (e) {
       return CombinedSearch(local: local, failure: _classify(e));
+    } on Object catch (_) {
+      // R2-L1: error non-parser (mis. error tak terduga di API) tidak
+      // boleh lolos ke `_submit` — layar akan macet di loading bila
+      // `_loading` tidak pernah kembali false. Petakan ke kegagalan
+      // server supaya UI menampilkan pesan + tombol coba lagi.
+      return CombinedSearch(local: local, failure: OnlineFailure.server);
     }
   }
 
@@ -288,6 +302,11 @@ class SearchService {
       return BrowseOutcome(page: page);
     } on ExtractorException catch (e) {
       return BrowseOutcome(failure: _classify(e));
+    } on Object catch (_) {
+      // R2-L1: sama seperti search — error tak terduga dipetakan ke
+      // kegagalan server, bukan dilempar ke FutureBuilder (yang tanpa
+      // cabang hasError akan menampilkan shimmer selamanya).
+      return const BrowseOutcome(failure: OnlineFailure.server);
     }
   }
 
@@ -325,6 +344,17 @@ class SearchService {
         );
       }
       return BrowseOutcome(failure: _classify(e));
+    } on Object catch (_) {
+      // R2-L1: sama seperti browse — error tak terduga dipetakan ke
+      // kegagalan server (dengan data terakhir bila ada).
+      if (cached != null) {
+        return BrowseOutcome(
+          page: cached,
+          failure: OnlineFailure.server,
+          fromCache: true,
+        );
+      }
+      return const BrowseOutcome(failure: OnlineFailure.server);
     }
   }
 

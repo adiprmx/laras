@@ -10,6 +10,7 @@ library;
 import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:laras/extractor/url_allowlist.dart';
 import 'package:laras/l10n/generated/app_localizations_id.dart';
 
 import 'audio_player_port.dart';
@@ -42,6 +43,17 @@ class LarasAudioHandler extends BaseAudioHandler {
   static final RegExp _videoIdPattern = RegExp(r'^[A-Za-z0-9_-]{11}$');
 
   static bool _isValidVideoId(String id) => _videoIdPattern.hasMatch(id);
+
+  /// Sampul dari `MediaItem` eksternal (R2-L2): hanya URL thumbnail
+  /// YouTube/Google yang diizinkan — app lain yang memerintah
+  /// MediaSession bisa menyuntikkan URL gambar arbitrer, yang tanpa
+  /// validasi akan di-fetch `AlbumCover` DAN disimpan ke database
+  /// (`Track.toSongsCompanion`). URL yang tidak sah menjadi null
+  /// (tanpa sampul), bukan ditolak seluruh perintahnya.
+  static Uri? _validArtUri(Uri? artUri) {
+    if (artUri == null) return null;
+    return isAllowedThumbnailUrl(artUri.toString()) ? artUri : null;
+  }
 
   MediaItem _toMediaItem(Track track, Duration? duration) {
     return MediaItem(
@@ -180,7 +192,7 @@ class LarasAudioHandler extends BaseAudioHandler {
           artist: mediaItem.artist,
           album: mediaItem.album,
           duration: mediaItem.duration,
-          artUri: mediaItem.artUri,
+          artUri: _validArtUri(mediaItem.artUri),
         ),
       ],
       autoplay: true,
@@ -197,7 +209,7 @@ class LarasAudioHandler extends BaseAudioHandler {
         artist: mediaItem.artist,
         album: mediaItem.album,
         duration: mediaItem.duration,
-        artUri: mediaItem.artUri,
+        artUri: _validArtUri(mediaItem.artUri),
       ),
     );
   }
@@ -220,7 +232,7 @@ class LarasAudioHandler extends BaseAudioHandler {
         artist: mediaItem.artist,
         album: mediaItem.album,
         duration: mediaItem.duration,
-        artUri: mediaItem.artUri,
+        artUri: _validArtUri(mediaItem.artUri),
       ),
     );
   }
@@ -250,7 +262,7 @@ class LarasAudioHandler extends BaseAudioHandler {
             artist: m.artist,
             album: m.album,
             duration: m.duration,
-            artUri: m.artUri,
+            artUri: _validArtUri(m.artUri),
           ),
         )
         .toList(growable: false);

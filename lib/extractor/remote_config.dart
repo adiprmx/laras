@@ -64,7 +64,7 @@ const String kRemoteConfigFallbackUrl =
 const String kRemoteConfigCacheKey = 'laras.remote_player_config';
 const String kRemoteConfigFetchedAtKey = 'laras.remote_player_config_fetched_at';
 
-/// Pemetaan hash player bawaan (nilai hasil probe 15 Nov 2026).
+/// Pemetaan hash player bawaan (nilai hasil probe 15 Nov + 17 Nov 2026).
 ///
 /// Satu-satunya sumber kebenaran untuk nilai bawaan: dipakai
 /// [RemotePlayerConfig.defaults] DAN sebagai allowlist cadangan
@@ -73,8 +73,21 @@ const String kRemoteConfigFetchedAtKey = 'laras.remote_player_config_fetched_at'
 /// yang bisa diekstrak + tcl sts 20767001 yang tidak bisa); gerbang hash
 /// hanya memeriksa hash-nya — varian yang dieksekusi selalu non-tcl
 /// karena varian tcl gagal di ekstraksi sebelum mencapai solver
-/// (fallback P0 di loader).
-const Map<String, int> kBuiltinPlayerHashes = <String, int>{'fad7e4e9': 20767};
+/// (fallback P0 di loader). Hash `ad8d59ae` (sts 20768, non-tcl,
+/// 2.679.612 byte, sha256 aa9d9b7f...) dan `b559f50c` (sts 20770,
+/// non-tcl, 2.684.806 byte, sha256 d9ed02c4...) adalah rotasi YouTube
+/// 17 Nov 2026 (probe koordinator; ekstraksi keduanya terverifikasi
+/// pada script asli + tes unit; b559f50c terverifikasi live end-to-end
+/// 6/6; solve live ad8d59ae tertunda outage egress saat verifikasi).
+/// YouTube TERBUKTI menyajikan beberapa hash
+/// bersamaan (halaman tonton → ad8d59ae, beranda → b559f50c, menit
+/// yang sama) — allowlist multi-hash adalah keharusan, bukan cadangan.
+/// Hash lama dipertahankan karena rute tertentu masih menyajikannya.
+const Map<String, int> kBuiltinPlayerHashes = <String, int>{
+  'fad7e4e9': 20767,
+  'ad8d59ae': 20768,
+  'b559f50c': 20770,
+};
 
 /// Config player yang sudah di-parse (dari remote atau bawaan).
 class RemotePlayerConfig {

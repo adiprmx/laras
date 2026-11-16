@@ -217,6 +217,7 @@ class SongImport {
   const SongImport({
     required this.song,
     this.artistNames = const <String>[],
+    this.artistChannelIds = const <String?>[],
     this.album,
   });
 
@@ -225,6 +226,9 @@ class SongImport {
   final SongsCompanion song;
 
   final List<String> artistNames;
+
+  /// channelId YTM sejajar [artistNames] (lihat [LibraryService.upsertSong]).
+  final List<String?> artistChannelIds;
 
   /// Album pemilik lagu, bila diketahui.
   final AlbumsCompanion? album;
@@ -346,7 +350,14 @@ class LibraryService {
 
   /// Impor massal: sama seperti [upsertSong] untuk tiap item, tapi dalam
   /// satu transaksi (dipakai tes performa dan impor backup P8).
-  Future<void> importSongs(List<SongImport> items) async {
+  ///
+  /// [addToLibrary] benar (default) berarti lagu masuk Library. P7
+  /// memanggil dengan false saat menyimpan antrean: sekadar diputar
+  /// tidak memasukkan lagu ke Library.
+  Future<void> importSongs(
+    List<SongImport> items, {
+    bool addToLibrary = true,
+  }) async {
     if (items.isEmpty) return;
     final DateTime now = DateTime.now();
     await db.transaction(() async {
@@ -355,10 +366,15 @@ class LibraryService {
         final SongsCompanion withAlbum = albumId == null
             ? item.song
             : item.song.copyWith(albumId: Value<String?>(albumId));
-        await _upsertSongRow(withAlbum, now: now, addToLibrary: true);
+        await _upsertSongRow(
+          withAlbum,
+          now: now,
+          addToLibrary: addToLibrary,
+        );
         await _replaceSongArtists(
           withAlbum.id.value,
           item.artistNames,
+          channelIds: item.artistChannelIds,
           now: now,
         );
         await _syncSongFts(
@@ -1743,6 +1759,114 @@ class LibraryService {
   /// Kosongkan antrean tersimpan.
   Future<void> clearQueue() async {
     await db.delete(db.queueItems).go();
+  }
+
+  // ------------------------------------------------------------------
+  // Lirik (P7)
+  // ------------------------------------------------------------------
+
+  /// Lirik tersimpan satu lagu, atau null bila belum pernah diambil.
+  Future<Lyric?> getLyrics(String songId) async {
+    return (db.select(
+      db.lyrics,
+    )..where((Lyrics l) => l.songId.equals(songId))).getSingleOrNull();
+  }
+
+  /// Simpan lirik lagu (sisip atau ganti). Lagu wajib sudah ada di tabel
+  /// songs (FK); pemanggil memastikan lewat [upsertSong] dulu. [lyrics]
+  /// boleh string kosong bila hanya lirik tersinkron yang ada (kolom
+  /// lyrics NOT NULL, jadi tidak bisa null).
+  Future<void> saveLyrics({
+    required String songId,
+    required String lyrics,
+    String? syncedLyrics,
+  }) async {
+    await db
+        .into(db.lyrics)
+        .insert(
+          LyricsCompanion.insert(
+            songId: songId,
+            lyrics: lyrics,
+            syncedLyrics: Value<String?>(syncedLyrics),
+            fetchedAt: DateTime.now(),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+  }
+
+  // ------------------------------------------------------------------
+  // Status pemutar (P7, MUST #3)
+  // ------------------------------------------------------------------
+
+  /// Status pemutar terakhir (satu baris, id 1), atau null bila belum
+  /// pernah disimpan.
+  Future<PlaybackStateData?> loadPlaybackState() async {
+    return (db.select(
+      db.playbackState,
+    )..where((PlaybackState t) => t.id.equals(1))).getSingleOrNull();
+  }
+
+  /// Simpan status pemutar penuh (sisip atau ganti baris id 1).
+  Future<void> savePlaybackState({
+    required int currentIndex,
+    required int positionMs,
+    required bool shuffleEnabled,
+    required int repeatMode,
+  }) async {
+    await db
+        .into(db.playbackState)
+        .insert(
+          PlaybackStateCompanion.insert(
+            id: const Value<int>(1),
+            currentIndex: Value<int>(currentIndex),
+            positionMs: Value<int>(positionMs),
+            shuffleEnabled: Value<bool>(shuffleEnabled),
+            repeatMode: Value<int>(repeatMode),
+            updatedAt: DateTime.now(),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+  }
+
+  /// Perbarui posisi saja, mempertahankan indeks/mode yang tersimpan.
+  /// Bila belum ada baris, dibuat dengan nilai default.
+  Future<void> savePlaybackPosition(int positionMs) async {
+    final PlaybackStateData? existing = await loadPlaybackState();
+    if (existing == null) {
+      await db.into(db.playbackState).insert(
+        PlaybackStateCompanion.insert(
+          id: const Value<int>(1),
+          positionMs: Value<int>(positionMs),
+          updatedAt: DateTime.now(),
+        ),
+      );
+      return;
+    }
+    await (db.update(
+      db.playbackState,
+    )..where((PlaybackState t) => t.id.equals(1))).write(
+      PlaybackStateCompanion(
+        positionMs: Value<int>(positionMs),
+        updatedAt: Value<DateTime>(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Beberapa lagu sekaligus, urut sesuai [ids] (lagu yang tidak ada
+  /// dilewati). Dipakai restore antrean.
+  Future<List<SongView>> songsByIds(List<String> ids) async {
+    if (ids.isEmpty) return const <SongView>[];
+    final List<Song> rows = await (db.select(
+      db.songs,
+    )..where((Songs s) => s.id.isIn(ids))).get();
+    final List<SongView> views = await _attachArtists(rows);
+    final Map<String, SongView> byId = <String, SongView>{
+      for (final SongView v in views) v.id: v,
+    };
+    return <SongView>[
+      for (final String id in ids)
+        if (byId[id] != null) byId[id]!,
+    ];
   }
 
   // ------------------------------------------------------------------

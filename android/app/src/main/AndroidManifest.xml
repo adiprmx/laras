@@ -11,6 +11,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- P7: equalizer memakai android.media.audiofx.Equalizer, yang
+         mewajibkan izin ini. Izin normal (tanpa dialog). -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <application
         android:label="Laras"
@@ -39,6 +42,27 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- P7 (MUST #13): tautan lagu YouTube dibuka Laras. Dua
+                 filter terpisah dengan sengaja: beberapa <data> dalam
+                 satu filter dicocokkan sebagai cross-product atribut
+                 (host satu elemen bisa berpasangan dengan path elemen
+                 lain), jadi youtu.be (tanpa path) dan */watch dipisah.
+                 Bukan App Link terverifikasi (tanpa assetlinks) —
+                 pemilih app tampil bila app lain mengklaim host sama. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="youtu.be"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="youtube.com" android:path="/watch"/>
+                <data android:scheme="https" android:host="www.youtube.com" android:path="/watch"/>
+                <data android:scheme="https" android:host="music.youtube.com" android:path="/watch"/>
             </intent-filter>
         </activity>
         <!-- Layanan audio (audio_service): notifikasi media, lock screen,

@@ -20,6 +20,15 @@
 /// * Ruang habis di tengah unduhan (ENOSPC): job gagal jujur dengan
 ///   alasan "ruang penuh", file `.part` dipertahankan supaya bisa
 ///   dilanjutkan manual lewat resume setelah pengguna mengosongkan ruang.
+/// * Batas byte per file (R2-M2): satu file tidak pernah melewati
+///   [kMaxDownloadBytes] (1 GB) — total yang dideklarasikan di atas
+///   batas ditolak sebelum mengunduh, dan stream yang melewati total
+///   yang dideklarasikan + margin (atau batas absolut) dihentikan di
+///   tengah jalan dengan `.part` dihapus. Tanpa ini, server yang
+///   berbohong soal ukuran bisa mengisi storage HP sampai penuh.
+/// * URL unduhan divalidasi allowlist (R2-M1) di resolver DAN di sini
+///   (sabuk kedua, sebelum request pertama) — URL di luar host yang
+///   diizinkan tidak pernah di-fetch.
 /// * App ditutup di tengah unduhan: unduhan TIDAK lanjut di latar pada
 ///   v1 (tanpa foreground service `dataSync` — diputuskan P5, lihat
 ///   catatan batasan di bawah). Job kembali ke antrean saat start
@@ -67,6 +76,22 @@ import 'stream_cache.dart';
 
 /// Maks percobaan unduh per job (PRD B3.2).
 const int kMaxDownloadAttempts = 3;
+
+/// Batas absolut satu file unduhan: 1 GB (R2-M2).
+///
+/// Dasar angka: satu lagu tidak pernah sebesar ini — video 10 jam pada
+/// 160 kbps pun hanya ≈ 720 MB. Server yang mendeklarasikan total di
+/// atas batas ini ditolak sebelum mengunduh; server yang mengalirkan
+/// byte melewati batas ini dihentikan di tengah stream (bukan sesudah
+/// selesai). Tanpa cap, server jahat bisa mengisi storage HP sampai
+/// penuh (pra-periksa ruang memakai total yang DIDEKLARASIKAN server,
+/// jadi kebohongan deklarasi mengalahkan pra-periksa juga).
+const int kMaxDownloadBytes = 1024 * 1024 * 1024;
+
+/// Toleransi di atas total yang dideklarasikan server sebelum stream
+/// dianggap melampaui janji (R2-M2): 1 MB menutup pembulatan header,
+/// tanpa memberi ruang berarti bagi server yang berbohong.
+const int kDownloadTotalMarginBytes = 1024 * 1024;
 
 /// Buffer ruang kosong yang wajib tersisa sesudah unduhan (PRD B3.3,
 /// usulan 100 MB).
@@ -132,13 +157,17 @@ class DownloadService {
     FreeSpaceProvider? freeSpace,
     this.defaultQuality = DownloadQuality.best,
     Duration Function(int attempt)? backoffFor,
+    bool Function(String url)? urlValidator,
+    int maxDownloadBytes = kMaxDownloadBytes,
   }) : _library = library,
        _paths = paths,
        _urlSource = urlSource,
        _streamCache = streamCache,
        _dio = dio ?? Dio(BaseOptions(connectTimeout: const Duration(seconds: 30))),
        _freeSpace = freeSpace ?? PlatformFreeSpaceProvider(),
-       _backoffFor = backoffFor ?? _defaultBackoff;
+       _backoffFor = backoffFor ?? _defaultBackoff,
+       _urlValidator = urlValidator ?? isAllowedStreamUrl,
+       _maxDownloadBytes = maxDownloadBytes;
 
   static Duration _defaultBackoff(int attempt) {
     // Percobaan 1 gagal -> tunggu 1 dtk; percobaan 2 gagal -> 2 dtk.
@@ -158,6 +187,16 @@ class DownloadService {
   /// Field publik seperti [onQueueIdle]: Pengaturan menulis langsung.
   DownloadQuality defaultQuality;
   final Duration Function(int) _backoffFor;
+
+  /// Validasi URL sebelum diunduh (R2-M1, sabuk kedua sesudah resolver).
+  /// Bawaan: allowlist stream [isAllowedStreamUrl]. Tes memakai server
+  /// lokal (127.0.0.1) mengoper validator longgarnya sendiri — produksi
+  /// tidak pernah mengoper parameter ini.
+  final bool Function(String url) _urlValidator;
+
+  /// Batas absolut satu file unduhan (R2-M2). Tes memakai nilai kecil
+  /// supaya cap bisa dibuktikan tanpa mengalirkan 1 GB.
+  final int _maxDownloadBytes;
 
   /// Callback saat antrean kosong (dipakai cache untuk menjalankan
   /// fetch tertunda). Di-wire main.dart.
@@ -587,9 +626,17 @@ class DownloadService {
           await _deleteJobAndFiles(songId);
           return;
         }
+        // R2-M2: total yang dideklarasikan resolver sudah melewati batas
+        // absolut satu file — tidak ada gunanya mencoba mengunduh
+        // (gagal permanen, bukan retry: server tidak akan mengubah
+        // deklarasinya di percobaan berikutnya).
+        final int? contentLength = resolved.contentLength;
+        if (contentLength != null && contentLength > _maxDownloadBytes) {
+          await _failJob(songId, DownloadFailure.unplayable);
+          return;
+        }
         // Total pasti dari server menggantikan perkiraan enqueue
         // (progress bar memakai angka nyata mulai percobaan ini).
-        final int? contentLength = resolved.contentLength;
         if (contentLength != null && contentLength > 0) {
           await _library.updateDownloadJob(
             songId,
@@ -689,6 +736,14 @@ class DownloadService {
     DownloadUrl resolved,
   ) async {
     final String songId = song.id;
+    // R2-M1 — SABUK KEDUA: resolver sudah memvalidasi URL, tapi titik
+    // ini adalah satu-satunya tempat file diunduh ke disk — URL yang
+    // lolos ke sini tanpa lolos allowlist tidak pernah di-fetch.
+    // Gagal permanen: URL yang tidak sah tidak akan menjadi sah di
+    // percobaan berikutnya.
+    if (!_urlValidator(resolved.url)) {
+      return _AttemptOutcome.unplayable;
+    }
     final String extension = extensionForMimeType(resolved.mimeType);
     final File partFile = _paths.downloadPartFile(songId, extension);
     int downloaded = 0;
@@ -741,6 +796,24 @@ class DownloadService {
         downloaded = 0;
       }
       total = _totalFromResponse(response, resumed, downloaded) ?? total;
+      // R2-M2: total dari header respons melewati batas absolut — tolak
+      // sebelum satu byte pun ditulis. `.part` yang tertinggal dari
+      // percobaan sebelumnya ikut dihapus (file ini tidak akan pernah
+      // bisa selesai, jadi sisanya tidak berguna).
+      if (total != null && total > _maxDownloadBytes) {
+        // Batalkan request supaya koneksi tidak tertinggal menggantung
+        // (badan respons tidak akan dibaca).
+        token.cancel('unduhan melewati batas byte');
+        _deletePartFile(partFile);
+        return _AttemptOutcome.unplayable;
+      }
+      // Cap byte yang ditegakkan DI DALAM loop chunk: total yang
+      // dideklarasikan + margin 1 MB, tidak pernah melewati batas
+      // absolut. Tanpa total (header tidak menyebutkannya), cap-nya
+      // adalah batas absolut itu sendiri.
+      final int byteCap = total == null
+          ? _maxDownloadBytes
+          : min(_maxDownloadBytes, total + kDownloadTotalMarginBytes);
       await _library.updateDownloadJob(
         songId,
         DownloadJobsCompanion(
@@ -763,6 +836,7 @@ class DownloadService {
         mode: resumed ? FileMode.append : FileMode.write,
       );
       int received = downloaded;
+      bool capExceeded = false;
       try {
         await for (final List<int> chunk in response.data!.stream) {
           lastChunkAt = DateTime.now();
@@ -776,6 +850,14 @@ class DownloadService {
           // mendorong ke OS (bukan fsync), murah untuk file audio.
           await sink.flush();
           received += chunk.length;
+          // R2-M2: server yang mengalirkan lebih dari yang dijanjikan
+          // (atau dari batas absolut) dihentikan SEKARANG — pemeriksaan
+          // sesudah stream selesai tidak pernah tercapai bila stream
+          // tidak pernah selesai. `break` membatalkan langganan stream.
+          if (received > byteCap) {
+            capExceeded = true;
+            break;
+          }
           _onProgress(songId, received, total);
         }
         await sink.close();
@@ -784,6 +866,16 @@ class DownloadService {
           await sink.close();
         } on Object catch (_) {}
         rethrow;
+      }
+      if (capExceeded) {
+        // Server berbohong soal ukuran: batalkan request-nya SEKARANG
+        // (tanpa ini soket tertinggal terbuka dan server terus menulis
+        // ratusan ms sesudah stream dihentikan), gagal permanen (retry
+        // hanya mengulang kebohongan yang sama) dan .part dihapus supaya
+        // ruang langsung kembali.
+        token.cancel('unduhan melewati batas byte');
+        _deletePartFile(partFile);
+        return _AttemptOutcome.unplayable;
       }
       if (total != null && received != total) {
         return _AttemptOutcome.retryable;
@@ -813,6 +905,17 @@ class DownloadService {
     } finally {
       stallTimer?.cancel();
       if (_activeStallTimer == stallTimer) _activeStallTimer = null;
+    }
+  }
+
+  /// Hapus file `.part` (sinkron, meniru penghapusan lain di layanan ini
+  /// — API async tidak pernah kembali dari zona FakeAsync tes widget).
+  /// Kegagalan diabaikan: rekonsiliasi membersihkan sisanya.
+  void _deletePartFile(File partFile) {
+    try {
+      if (partFile.existsSync()) partFile.deleteSync();
+    } on FileSystemException {
+      // Rekonsiliasi membersihkan sisanya.
     }
   }
 

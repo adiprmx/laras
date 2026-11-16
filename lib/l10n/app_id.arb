@@ -82,6 +82,9 @@
   "@createPlaylist": {
     "description": "Tombol buat playlist baru."
   },
+  "@deepLinkFailed": {
+    "description": "P7: pesan saat tautan YouTube dari luar app tidak bisa dibuka."
+  },
   "@delete": {
     "description": "Label kanonis tombol hapus di seluruh app."
   },
@@ -161,6 +164,18 @@
         "type": "String"
       }
     }
+  },
+  "@equalizer": {
+    "description": "P7: judul bagian equalizer di lembar pengaturan suara."
+  },
+  "@equalizerCustom": {
+    "description": "P7: pilihan equalizer 'atur sendiri' (slider per pita)."
+  },
+  "@equalizerNeedsSong": {
+    "description": "P7: pesan saat equalizer dibuka tapi belum ada lagu yang diputar."
+  },
+  "@equalizerPreset": {
+    "description": "P7: label pilihan suara bawaan HP di equalizer."
   },
   "@exploreFailedHttp": {
     "description": "Pesan saat browse gagal karena HTTP error."
@@ -267,6 +282,12 @@
   "@lyricsFailed": {
     "description": "Pesan saat lirik gagal dimuat karena jaringan."
   },
+  "@lyricsInstrumental": {
+    "description": "P7: pesan saat lagu terbukti instrumental (tanpa lirik)."
+  },
+  "@lyricsLoading": {
+    "description": "P7: teks saat lirik sedang dimuat."
+  },
   "@lyricsMissing": {
     "description": "Pesan saat penyedia lirik tidak punya lirik lagu ini."
   },
@@ -275,6 +296,9 @@
   },
   "@lyricsNotice": {
     "description": "Pemberitahuan satu kali sebelum request lirik pertama."
+  },
+  "@lyricsSource": {
+    "description": "P7: atribusi sumber lirik di bawah lirik."
   },
   "@lyricsUnavailable": {
     "description": "Pesan singkat di tab Lirik saat lirik tidak tersedia."
@@ -534,11 +558,41 @@
   "@sleepTimer": {
     "description": "Label fitur sleep timer."
   },
+  "@sleepTimerAfterSong": {
+    "description": "P7: pilihan timer tidur 'berhenti sesudah lagu ini habis'."
+  },
   "@sleepTimerCancelled": {
     "description": "Pesan saat sleep timer batal karena pengguna ganti lagu."
   },
+  "@sleepTimerCustom": {
+    "description": "P7: label pilihan waktu sendiri di timer tidur."
+  },
   "@sleepTimerDone": {
     "description": "Pesan saat sleep timer habis dan pemutaran berhenti."
+  },
+  "@sleepTimerMinutes": {
+    "description": "P7: label durasi timer tidur dalam menit.",
+    "placeholders": {
+      "minutes": {
+        "example": "15",
+        "type": "int"
+      }
+    }
+  },
+  "@sleepTimerOff": {
+    "description": "P7: tombol mematikan timer tidur."
+  },
+  "@sleepTimerStopsAfterSong": {
+    "description": "P7: label chip timer tidur saat mode 'sesudah lagu ini' aktif."
+  },
+  "@sleepTimerStopsIn": {
+    "description": "P7: label chip timer tidur saat timer berbasis waktu aktif.",
+    "placeholders": {
+      "minutes": {
+        "example": "15",
+        "type": "int"
+      }
+    }
   },
   "@songCannotPlay": {
     "description": "Pesan saat satu lagu gagal diputar setelah semua percobaan."
@@ -623,6 +677,7 @@
   "close": "Tutup",
   "comingSoon": "Segera hadir",
   "createPlaylist": "Buat playlist",
+  "deepLinkFailed": "Tautan tidak bisa dibuka. Periksa internet lalu coba lagi.",
   "delete": "Hapus",
   "deleteAll": "Hapus semua",
   "deleteDownloadTitle": "Hapus unduhan?",
@@ -641,6 +696,10 @@
   "downloadsEmptyBody": "Ketuk ikon unduh di lagu mana pun untuk menyimpan dan memutarnya tanpa internet.",
   "downloadsEmptyTitle": "Belum ada unduhan",
   "downloadsSummary": "{count} lagu, {size}",
+  "equalizer": "Equalizer",
+  "equalizerCustom": "Atur sendiri",
+  "equalizerNeedsSong": "Putar lagu dulu untuk mengatur suara",
+  "equalizerPreset": "Pilihan suara",
   "exploreFailedHttp": "Bagian jelajah belum bisa dimuat. Coba lagi nanti.",
   "exploreFailedParse": "Bagian jelajah belum bisa dimuat. YouTube mungkin mengubah layanannya.",
   "exploreNeedsInternet": "Bagian jelajah butuh internet. Sambungkan internet untuk melihatnya.",
@@ -672,9 +731,12 @@
   "loudnessBoostNote": "Bukan penyeimbang volume antar lagu.",
   "lyrics": "Lirik",
   "lyricsFailed": "Lirik belum bisa dimuat. Periksa koneksimu lalu coba lagi.",
+  "lyricsInstrumental": "Lagu ini musik saja, tanpa lirik",
+  "lyricsLoading": "Memuat lirik...",
   "lyricsMissing": "Lirik lagu ini belum ada.",
   "lyricsNotSaved": "Lirik belum tersimpan. Sambungkan internet sekali untuk mengambilnya.",
   "lyricsNotice": "Lirik diambil dari layanan luar. Layanan itu bisa melihat judul lagu yang kamu putar dan alamat internetmu.",
+  "lyricsSource": "Lirik dari LRCLIB",
   "lyricsUnavailable": "Lirik lagu ini belum tersedia.",
   "manageStorage": "Kelola penyimpanan",
   "nextSong": "Lagu berikutnya",
@@ -755,8 +817,14 @@
   "skipSilence": "Lewati bagian hening",
   "skippedUnplayable": "{count} lagu dilewati karena tidak bisa diputar.",
   "sleepTimer": "Timer tidur",
+  "sleepTimerAfterSong": "Sesudah lagu ini habis",
   "sleepTimerCancelled": "Timer dibatalkan karena kamu ganti lagu.",
+  "sleepTimerCustom": "Waktu lain",
   "sleepTimerDone": "Pemutaran berhenti sesuai timer tidur.",
+  "sleepTimerMinutes": "{minutes} mnt",
+  "sleepTimerOff": "Matikan timer",
+  "sleepTimerStopsAfterSong": "Berhenti sesudah lagu ini",
+  "sleepTimerStopsIn": "Berhenti dalam {minutes} mnt",
   "songCannotPlay": "Lagu ini tidak bisa diputar sekarang. Coba lagu lain atau coba lagi nanti.",
   "songNeedsInternet": "Lagu ini butuh internet. Unduh dulu supaya bisa didengar offline.",
   "songNotSaved": "Lagu ini belum tersimpan di HP-mu. Sambungkan internet untuk memutarnya.",

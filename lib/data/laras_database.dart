@@ -1,4 +1,4 @@
-/// Database Laras: drift di atas SQLite, skema v3.
+/// Database Laras: drift di atas SQLite, skema v4.
 ///
 /// Riwayat skema:
 /// - v1 (P3): 15 tabel + FTS5.
@@ -6,6 +6,9 @@
 ///   `attempts` (default 0), dan `createdAt` (nullable) — PRD B3.2.
 /// - v3 (P6): `songs` mendapat kolom `unplayable` (default false) +
 ///   indeks `songs_unplayable_idx` — PRD B4.7.
+/// - v4 (P7): tabel baru `playback_state` (satu baris, id 1) untuk
+///   restore antrean + posisi sesudah restart — MUST #3. Tabel baru
+///   kosong; data lama tidak tersentuh.
 ///
 /// File ini murni Dart (tanpa import Flutter) supaya `drift_dev schema
 /// dump` bisa menjalankannya di VM polos. Pembukaan koneksi produksi
@@ -41,6 +44,7 @@ part 'laras_database.g.dart';
     LocalItems,
     CacheEntries,
     DownloadJobs,
+    PlaybackState,
   ],
   include: <String>{'schema.drift'},
 )
@@ -48,7 +52,7 @@ class LarasDatabase extends _$LarasDatabase {
   LarasDatabase(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -70,6 +74,12 @@ class LarasDatabase extends _$LarasDatabase {
         // lama dianggap bisa diputar sampai terbukti sebaliknya).
         await m.addColumn(songs, songs.unplayable);
         await m.createIndex(songsUnplayableIdx);
+      }
+      if (from < 4 && to >= 4) {
+        // v3 -> v4 (P7): tabel status pemutar untuk restore antrean
+        // (MUST #3). Tabel baru kosong; lagu, antrean, dan semua data
+        // lama tidak tersentuh.
+        await m.createTable(playbackState);
       }
     },
     beforeOpen: (OpeningDetails details) async {

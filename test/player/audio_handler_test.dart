@@ -336,5 +336,80 @@ void main() {
       await handler.seek(const Duration(seconds: -5));
       expect(port.seekCalls, <Duration>[Duration.zero]);
     });
+
+    test('R2-L2: playMediaItem artUri di luar host thumbnail dihapus',
+        () async {
+      port.emitSnapshot(snapshotWith(current: tracks[0]));
+      await settle();
+      await handler.playMediaItem(
+        MediaItem(
+          id: 'zzzzzzzzzzz',
+          title: 'Lagu Baru',
+          artUri: Uri.parse('http://evil.example/x.jpg'),
+        ),
+      );
+      expect(port.setQueueCalls.single.$1.single.artUri, isNull);
+    });
+
+    test('R2-L2: playMediaItem artUri thumbnail yang sah dipertahankan',
+        () async {
+      port.emitSnapshot(snapshotWith(current: tracks[0]));
+      await settle();
+      await handler.playMediaItem(
+        MediaItem(
+          id: 'zzzzzzzzzzz',
+          title: 'Lagu Baru',
+          artUri: Uri.parse('https://i.ytimg.com/vi/zzzzzzzzzzz/hqdefault.jpg'),
+        ),
+      );
+      expect(
+        port.setQueueCalls.single.$1.single.artUri.toString(),
+        'https://i.ytimg.com/vi/zzzzzzzzzzz/hqdefault.jpg',
+      );
+    });
+
+    test('R2-L2: add/insert antrean artUri jahat dihapus', () async {
+      await handler.addQueueItem(
+        MediaItem(
+          id: 'ddddddddddd',
+          title: 'Lagu d',
+          artUri: Uri.parse('https://evil.example.evil.com/x.png'),
+        ),
+      );
+      await handler.insertQueueItem(
+        0,
+        MediaItem(
+          id: 'eeeeeeeeeee',
+          title: 'Lagu e',
+          artUri: Uri.parse('https://googlevideo.com@evil.example/x.png'),
+        ),
+      );
+      expect(port.addToQueueCalls.single.artUri, isNull);
+      expect(port.insertInQueueCalls.single.$2.artUri, isNull);
+    });
+
+    test('R2-L2: updateQueue menyaring artUri, id yang sah tetap jalan',
+        () async {
+      await handler.updateQueue(<MediaItem>[
+        MediaItem(
+          id: 'ccccccccccc',
+          title: 'Lagu c',
+          artUri: Uri.parse('https://lh3.googleusercontent.com/a-/x.jpg'),
+        ),
+        MediaItem(
+          id: 'aaaaaaaaaaa',
+          title: 'Lagu a',
+          artUri: Uri.parse('http://192.168.1.1/x.jpg'),
+        ),
+      ]);
+      final List<Track> tracks = port.setQueueCalls.single.$1;
+      expect(tracks.map((t) => t.videoId).toList(),
+          <String>['ccccccccccc', 'aaaaaaaaaaa']);
+      expect(
+        tracks[0].artUri.toString(),
+        'https://lh3.googleusercontent.com/a-/x.jpg',
+      );
+      expect(tracks[1].artUri, isNull);
+    });
   });
 }

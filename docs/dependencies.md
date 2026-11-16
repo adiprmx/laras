@@ -33,7 +33,7 @@ Semua versi terkunci di bawah ini adalah versi terbaru di pub.dev pada
 | drift | 2.35.4 | 160/160 | 2.492 | 2.000.930 | simonbinder.eu | MIT | 2026-11-08 |
 | drift_flutter | 0.3.1 | 160/160 | 70 | 652.909 | simonbinder.eu | MIT | 2026-07-11 |
 | sqlite3 | 3.9.1 | 150/160 | 466 | 3.768.906 | simonbinder.eu | MIT | 2026-11-08 |
-| gg_quickjs | 0.1.0 | 160/160 | 0 | 105 | — (tanpa publisher terverifikasi) | MIT | 2026-10-19 |
+| gg_quickjs | 0.1.1 (fork git, §2.1) | 160/160 | 0 | 105 | — (tanpa publisher terverifikasi) | MIT | 2026-11-16 |
 | cached_network_image_ce | 4.13.2 | 160/160 | 109 | 187.471 | erengun.dev | MIT | 2026-10-31 |
 | path_provider | 2.1.6 | 160/160 | 5.574 | 10.738.928 | flutter.dev | BSD-3-Clause | 2026-06-15 |
 | shared_preferences | 2.5.6 | 160/160 | 10.590 | 9.467.789 | flutter.dev | BSD-3-Clause | 2026-10-05 |
@@ -54,13 +54,14 @@ Catatan per paket:
   membangun library native SQLite dari source amalgamation saat build
   (hook `build.dart` + `native_toolchain_c`); tidak ada `.so` prebuilt
   di dalam paket — memenuhi aturan §5.2 soal binary blob.
-- **gg_quickjs 0.1.0** — mesin JavaScript (QuickJS-ng 0.17.0),
-  pengganti quickjs_engine 0.1.7 (R1-H1, lihat §2). 160 pub points,
-  tapi adopsi masih tipis (0 likes, 105 unduhan/30 hari, tanpa
-  publisher terverifikasi) — dicatat sebagai risiko yang diterima
-  karena tidak ada alternatif bermesin ≥ 0.16.0 yang lebih mapan.
-  Build hook mengompilasi dari source (NDK di Android, Clang di
-  host); tidak ada biner prebuilt. **Catatan dev:** `flutter test` /
+- **gg_quickjs 0.1.1 (fork git, R2-M3, lihat §2.1)** — mesin JavaScript
+  (QuickJS-ng 0.18.0), pengganti quickjs_engine 0.1.7 (R1-H1, lihat
+  §2). Fork dari `ggsuite/gg_quickjs` 0.1.0 (160 pub points, tapi
+  adopsi masih tipis: 0 likes, 105 unduhan/30 hari, tanpa publisher
+  terverifikasi) — dicatat sebagai risiko yang diterima karena tidak
+  ada alternatif bermesin ≥ 0.16.0 yang lebih mapan. Build hook
+  mengompilasi dari source (NDK di Android, Clang di host); tidak
+  ada biner prebuilt. **Catatan dev:** `flutter test` /
   `flutter build` di host Linux butuh **Clang** — resolver compiler
   Dart hanya mencari clang untuk build host (gcc tidak dicoba);
   runner CI Ubuntu sudah membawa clang.
@@ -151,6 +152,63 @@ langkah "APK contents breakdown" CI setelah migrasi mendarat.
 `JsRuntime` (isolate pekerja + kill-on-timeout dipertahankan sebagai
 backstop; `memoryLimit` 192 MiB, `timeout` 10 detik, `maxStackSize`
 256 KiB; tanpa `registerFunction`; hasil solve wajib String).
+
+### 2.1. Fork QuickJS-ng 0.18.0 (R2-M3, Blue 2, 16–17 Nov 2026)
+
+**Masalah:** `gg_quickjs` 0.1.0 (terbaru di pub.dev) membundel
+QuickJS-ng 0.17.0, tertinggal satu rilis dari 0.18.0 (1 Nov 2026).
+Perbaikan 0.18.0 yang relevan: use-after-free #1781 (JS_NewContext
+saat OOM) dan #1844 (WeakMap + symbol), OOM yang tidak bisa ditangkap
+#1810, InternalErrors yang tidak bisa ditangkap #1814, infinite loop
+#1829. Belum ada CVE untuk temuan-temuan ini (per Red 2).
+
+**Jalur upgrade:** fork resmi-didokumentasikan paket — jalankan
+`node tool/update-quickjs-ng.js v0.18.0` di salinan repo, lalu pakai
+fork itu sebagai dependensi git. Upstream (`ggsuite/gg_quickjs`)
+terakhir push 19 Okt 2026 dan belum merilis paket 0.18.0.
+
+**Fork ini:**
+- Repo: `github.com/adiprmx/gg_quickjs` (fork dari
+  `ggsuite/gg_quickjs`, dibuat 16 Nov 2026 via API GitHub).
+- Commit: `c84a5011cc55a45ba6cea923319d1aec41970924`
+  ("QuickJS-ng 0.18.0 (fork Laras): UAF #1781/#1844 + OOM fixes,
+  package 0.1.1"), 13 file berubah vs upstream `b96fc56`.
+- Versi paket fork: 0.1.1 (bump dari 0.1.0; perubahan hanya
+  QuickJS-ng 0.17.0 → 0.18.0 + dokumen fork).
+- Pin di `pubspec.yaml`: dependensi git dengan `ref` commit penuh
+  (BUKAN branch) supaya build reproduksibel:
+  `url: https://github.com/adiprmx/gg_quickjs.git`,
+  `ref: c84a5011cc55a45ba6cea923319d1aec41970924`.
+- Workdir fork (clone lokal, bukan bagian repo Laras):
+  `~/workspace/music-app/gg_quickjs-fork/`.
+
+**Jalur update fork (bila QuickJS-ng / upstream merilis baru):**
+1. Di workdir fork: `git fetch upstream` (remote upstream =
+   `ggsuite/gg_quickjs`) lalu merge/rebasi perbaikan upstream.
+2. `node tool/update-quickjs-ng.js vX.Y.Z` untuk versi QuickJS-ng
+   baru; skrip memperbarui `src/quickjs-ng/` +
+   `lib/src/quickjs_ng_version.dart`.
+3. Bump versi paket di `pubspec.yaml` fork + entri CHANGELOG.
+4. `dart test` di fork (versi + native + runtime + build hook;
+   build hook butuh timeout panjang di VM lambat:
+   `dart test --timeout 300s test/quickjs_ng_build_test.dart`).
+5. Push fork, lalu bump `ref` di `pubspec.yaml` Laras +
+   `flutter pub get` + jalankan `signature_solver_test.dart`.
+6. **Kembali ke upstream** bila upstream merilis paket dengan
+   QuickJS-ng ≥ 0.18.0: ganti dependensi git ke versi hosted biasa
+   dan hapus catatan ini (instruksi yang sama tertulis di CHANGELOG
+   fork).
+
+**Verifikasi (16–17 Nov 2026):**
+- Tes fork sendiri: 82/82 lolos — versi (1), native + runtime +
+  exception + opsi (77), build hook (4). Satu kegagalan awal tes
+  build hook terbukti timeout default 30 dtk di VM lambat (kompilasi
+  quickjs.c butuh 2:44), bukan cacat fork.
+- Tes solver Laras dengan fork: `signature_solver_test.dart` 6/6
+  lolos; library native `libgg_quickjs.so` ter-build dari source
+  0.18.0; `quickjsNgVersion` di checkout git = `'0.18.0'`.
+- Tes kanari live 5/5: lihat catatan koordinator (dijalankan terpisah
+  bila egress hidup).
 
 Verifikasi:
 - Tes unit `test/extractor/signature_solver_test.dart` (6 tes):

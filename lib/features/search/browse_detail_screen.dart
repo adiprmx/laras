@@ -110,6 +110,17 @@ class _BrowseDetailScreenState extends State<BrowseDetailScreen> {
     return FutureBuilder<BrowseOutcome>(
       future: future,
       builder: (BuildContext context, AsyncSnapshot<BrowseOutcome> snapshot) {
+        // R2-L1: future yang error tidak pernah punya data — tanpa
+        // cabang ini, layar menampilkan shimmer selamanya.
+        if (snapshot.hasError) {
+          return EmptyState(
+            icon: Icons.explore_outlined,
+            title: strings.browseFailedTitle,
+            body: strings.exploreFailedHttp,
+            actionLabel: strings.retry,
+            onAction: _retry,
+          );
+        }
         if (!snapshot.hasData) {
           return const Padding(
             padding: EdgeInsets.all(AppSpacing.md),

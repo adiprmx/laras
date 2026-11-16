@@ -12,6 +12,7 @@
 library;
 
 import 'package:drift/drift.dart';
+import 'package:laras/downloads/download_paths.dart';
 import 'package:laras/player/track.dart';
 
 import 'laras_database.dart';
@@ -88,10 +89,15 @@ extension SongViewTrack on SongView {
     final int? seconds = song.durationSeconds;
     final String? thumbnail = song.thumbnailUrl;
     final String? relative = song.filePath;
+    // R2-L3: nama file dari database TIDAK PERNAH dipakai mentah —
+    // bentuk yang tidak cocok (`<videoId>.<ekstensi>`) berarti data
+    // rusak: track menjadi streaming (tanpa localPath) daripada
+    // membangun path di luar direktori unduhan.
     final String? localPath =
         song.downloadState == DownloadState.downloaded &&
             relative != null &&
-            downloadsDir != null
+            downloadsDir != null &&
+            DownloadPaths.isValidDownloadRelativePath(relative)
         ? '$downloadsDir/$relative'
         : null;
     return Track(

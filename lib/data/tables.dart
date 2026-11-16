@@ -40,6 +40,15 @@ abstract final class DownloadJobStatus {
   static const int completed = 4;
 }
 
+/// Mode pengulangan (`playback_state.repeat_mode`). Nilai integer-nya
+/// sejajar dengan urutan enum `RepeatMode` di
+/// lib/player/player_state.dart dan tidak boleh diubah urutannya.
+abstract final class RepeatModeValue {
+  static const int off = 0;
+  static const int all = 1;
+  static const int one = 2;
+}
+
 /// Satu lagu yang dikenal app, baik dari YouTube Music maupun file lokal.
 ///
 /// `id` adalah videoId YouTube. Lagu masuk Library (`in_library`) saat
@@ -374,4 +383,34 @@ class DownloadJobs extends Table {
 
   @override
   Set<Column> get primaryKey => {songId};
+}
+
+/// Status pemutar terakhir, untuk memulihkan antrean sesudah restart
+/// (P7, MUST #3). Satu baris saja, id selalu 1.
+///
+/// Antrean itu sendiri tinggal di [QueueItems]; tabel ini menyimpan
+/// posisi di dalam antrean (lagu ke-berapa, detik ke-berapa) dan mode
+/// putar (acak/ulangi). Disimpan terpisah dari antrean supaya posisi
+/// bisa diperbarui tiap beberapa detik tanpa menulis ulang antrean.
+class PlaybackState extends Table {
+  /// Selalu 1: hanya ada satu status pemutar.
+  IntColumn get id => integer()();
+
+  /// Indeks lagu yang sedang diputar di urutan putar antrean.
+  IntColumn get currentIndex => integer().withDefault(const Constant(0))();
+
+  /// Posisi putar dalam lagu, milidetik.
+  IntColumn get positionMs => integer().withDefault(const Constant(0))();
+
+  /// Mode acak aktif saat status disimpan.
+  BoolColumn get shuffleEnabled =>
+      boolean().withDefault(const Constant(false))();
+
+  /// Mode pengulangan saat status disimpan (lihat [RepeatModeValue]).
+  IntColumn get repeatMode => integer().withDefault(const Constant(0))();
+
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }

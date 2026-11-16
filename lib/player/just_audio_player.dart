@@ -193,6 +193,14 @@ class JustAudioPlayerPort implements AudioPlayerPort {
   @override
   Stream<Duration> get bufferedPositionStream => _bufferedController.stream;
 
+  /// ID sesi audio Android dari engine (P7, untuk equalizer).
+  @override
+  int? get androidAudioSessionId => _engine.androidAudioSessionId;
+
+  @override
+  Stream<int?> get androidAudioSessionIdStream =>
+      _engine.androidAudioSessionIdStream;
+
   void _emit(PlayerSnapshot next) {
     if (_disposed || next == _snapshot) return;
     _snapshot = next;

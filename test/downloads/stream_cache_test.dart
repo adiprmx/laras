@@ -43,6 +43,158 @@ class _RangeServer {
   Future<void> stop() async => _server?.close(force: true);
 }
 
+/// Server yang mengalirkan byte TANPA Content-Length (chunked).
+/// Jeda 10 ms per chunk: tanpa jeda, server lokal menulis seluruh
+/// 100 KB dalam ~10 ms dan `.part` sudah di-rename + di-eviction
+/// sebelum polling pertama — tes tidak membedakan cap yang ditegakkan
+/// dari yang tidak. Dengan jeda, klien tanpa cap masih mengunduh
+/// (~60 KB di 600 ms) saat polling berjalan.
+/// Catatan: byte yang DISAJIKAN server TIDAK dipakai sebagai pembeda —
+/// terbukti server terus menulis ~50 KB sesudah klien membatalkan
+/// (soket tidak langsung tertutup). Pembeda yang andal adalah ukuran
+/// `.part` di sisi klien (lihat tes di bawah).
+class _ChunkedServer {
+  _ChunkedServer({required this.totalBytes});
+
+  final int totalBytes;
+  HttpServer? _server;
+
+  Future<Uri> start() async {
+    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    _server!.listen((HttpRequest request) async {
+      final HttpResponse response = request.response
+        ..statusCode = HttpStatus.ok
+        ..bufferOutput = false;
+      try {
+        int sent = 0;
+        while (sent < totalBytes) {
+          final int size = (totalBytes - sent).clamp(0, 1024);
+          response.add(List<int>.filled(size, 9));
+          await response.flush();
+          sent += size;
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        await response.close();
+      } on Object catch (_) {
+        // Klien membatalkan di tengah stream (cap/watchdog): abaikan.
+        try {
+          await request.response.close();
+        } on Object catch (_) {}
+      }
+    });
+    return Uri.parse('http://127.0.0.1:${_server!.port}/audio');
+  }
+
+  Future<void> stop() async => _server?.close(force: true);
+}
+
+/// Server yang mengirim header (dengan Content-Length) + 1 byte pertama
+/// seketika, tapi sisa badannya lambat: 1 KB tiap [chunkDelay] sesudah
+/// [firstChunkDelay]. Dipakai tes anggaran: tanpa badan lambat, fetch
+/// + eviction pasca-fetch selesai dalam <500 ms dan keadaan akhirnya
+/// sama dengan penolakan pra-fetch — tes tidak membedakan keduanya.
+/// Dengan badan lambat, klien tanpa anggaran masih mengunduh (file
+/// `.part` ADA) saat asersi berjalan, sementara klien dengan anggaran
+/// sudah menolak sebelum `.part` dibuat.
+/// 1 byte pertama WAJIB dikirim seketika: terbukti empiris Dio baru
+/// mengembalikan respons sesudah chunk badan pertama tiba — `flush()`
+/// tanpa badan TIDAK mengirim header (dio.get menunggu 2,3 dtk pada
+/// server yang flush lalu diam 2 dtk).
+class _SlowRangeServer {
+  _SlowRangeServer(this.bytes);
+
+  final List<int> bytes;
+  static const Duration firstChunkDelay = Duration(milliseconds: 800);
+  static const Duration chunkDelay = Duration(milliseconds: 250);
+  int requests = 0;
+  HttpServer? _server;
+
+  Future<Uri> start() async {
+    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    _server!.listen((HttpRequest request) async {
+      requests++;
+      final HttpResponse response = request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.set(HttpHeaders.contentLengthHeader, bytes.length)
+        ..bufferOutput = false;
+      try {
+        // Header + 1 byte pertama: membuka respons di sisi klien.
+        if (bytes.isNotEmpty) {
+          response.add(bytes.sublist(0, 1));
+          await response.flush();
+        }
+        await Future<void>.delayed(firstChunkDelay);
+        int sent = 1;
+        while (sent < bytes.length) {
+          final int size = (bytes.length - sent).clamp(0, 1024);
+          response.add(bytes.sublist(sent, sent + size));
+          await response.flush();
+          sent += size;
+          await Future<void>.delayed(chunkDelay);
+        }
+        await response.close();
+      } on Object catch (_) {
+        // Klien membatalkan (anggaran ditolak): abaikan.
+        try {
+          await response.close();
+        } on Object catch (_) {}
+      }
+    });
+    return Uri.parse('http://127.0.0.1:${_server!.port}/audio');
+  }
+
+  Future<void> stop() async => _server?.close(force: true);
+}
+
+/// Server yang mengirim header + satu chunk lalu diam (untuk tes
+/// watchdog stall R2-L4).
+class _StallingServer {
+  _StallingServer(this.firstChunk, this.declaredTotal);
+
+  final List<int> firstChunk;
+  final int declaredTotal;
+  HttpServer? _server;
+
+  Future<Uri> start() async {
+    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    _server!.listen((HttpRequest request) async {
+      try {
+        final HttpResponse response = request.response
+          ..statusCode = HttpStatus.ok
+          ..headers.set(HttpHeaders.contentLengthHeader, declaredTotal)
+          ..bufferOutput = false;
+        response.add(firstChunk);
+        await response.flush();
+        // Diam lama: watchdog stall harus membatalkan jauh sebelum ini.
+        await Future<void>.delayed(const Duration(seconds: 30));
+        await response.close();
+      } on Object catch (_) {}
+    });
+    return Uri.parse('http://127.0.0.1:${_server!.port}/audio');
+  }
+
+  Future<void> stop() async => _server?.close(force: true);
+}
+
+/// Server yang menerima koneksi tapi tidak pernah membalas (untuk tes
+/// timeout header R2-L4).
+class _MuteServer {
+  HttpServer? _server;
+
+  Future<Uri> start() async {
+    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    _server!.listen((HttpRequest request) async {
+      await Future<void>.delayed(const Duration(seconds: 30));
+      try {
+        await request.response.close();
+      } on Object catch (_) {}
+    });
+    return Uri.parse('http://127.0.0.1:${_server!.port}/audio');
+  }
+
+  Future<void> stop() async => _server?.close(force: true);
+}
+
 Future<void> _waitFor(
   Future<bool> Function() condition, {
   Duration timeout = const Duration(seconds: 5),
@@ -411,6 +563,381 @@ void main() {
         await _waitFor(
           () async => await library.cacheEntry('aaa11111111_251') != null,
         );
+        expect(
+          await paths.cacheFile('aaa11111111', 251, 'opus').exists(),
+          isTrue,
+        );
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  group('R2-M2: anggaran byte fetch cache', () {
+    test('total yang dideklarasikan di atas batas cache tidak di-fetch',
+        () async {
+      // Batas tes 1000 byte; server mendeklarasikan 5000 byte.
+      // Badan lambat: pembeda penolakan pra-fetch dari eviction
+      // pasca-fetch — klien tanpa anggaran masih mengunduh (`.part`
+      // ADA) saat asersi berjalan di 500 ms.
+      final List<int> bytes = List<int>.generate(5000, (int i) => i % 256);
+      final _SlowRangeServer server = _SlowRangeServer(bytes);
+      final Uri url = await server.start();
+      try {
+        cache.noteResolved(
+          'aaa11111111',
+          url.toString(),
+          251,
+          'audio/webm; codecs="opus"',
+        );
+        // Beri waktu fetch ditolak (gagal cepat sesudah header).
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        expect(await library.cacheEntry('aaa11111111_251'), isNull);
+        expect(
+          await paths.cacheFile('aaa11111111', 251, 'opus').exists(),
+          isFalse,
+        );
+        expect(
+          await paths.cachePartFile('aaa11111111', 251, 'opus').exists(),
+          isFalse,
+          reason: 'anggaran ditolak sebelum `.part` dibuat',
+        );
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test('stream tanpa Content-Length yang melewati anggaran dihentikan, '
+        '.part dihapus', () async {
+      // Batas tes 1000 byte; server mengalirkan 100 KB chunked.
+      final _ChunkedServer server = _ChunkedServer(totalBytes: 100 * 1024);
+      final Uri url = await server.start();
+      try {
+        cache.noteResolved(
+          'aaa11111111',
+          url.toString(),
+          251,
+          'audio/webm; codecs="opus"',
+        );
+        // Pembeda utama: pantau ukuran `.part` SELAMA fetch berjalan.
+        // Dengan cap, `.part` tidak pernah melewati anggaran + 1 chunk
+        // (~2 KB) lalu dihapus; tanpa cap, `.part` tumbuh terus
+        // (~60 KB di 600 ms). Polling 50 ms cukup rapat: `.part`
+        // tanpa cap melewati 8 KB di ~80 ms, jauh sebelum polling
+        // berakhir — tidak mungkin terlewat.
+        int maxPartSize = 0;
+        final File partFile =
+            paths.cachePartFile('aaa11111111', 251, 'opus');
+        for (int i = 0; i < 12; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          try {
+            if (partFile.existsSync()) {
+              final int size = partFile.lengthSync();
+              if (size > maxPartSize) maxPartSize = size;
+            }
+          } on FileSystemException {
+            // `.part` dihapus antar cek: abaikan.
+          }
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        expect(
+          maxPartSize,
+          lessThanOrEqualTo(8192),
+          reason: 'stream dihentikan di tengah jalan, bukan diunduh penuh',
+        );
+        expect(await library.cacheEntry('aaa11111111_251'), isNull);
+        expect(
+          await paths.cacheFile('aaa11111111', 251, 'opus').exists(),
+          isFalse,
+        );
+        expect(
+          await paths.cachePartFile('aaa11111111', 251, 'opus').exists(),
+          isFalse,
+          reason: '.part dihapus supaya ruang langsung kembali',
+        );
+        // Antrean tidak macet: fetch berikutnya tetap jalan.
+        final List<int> ok = List<int>.generate(64, (int i) => i);
+        final _RangeServer good = _RangeServer(ok);
+        final Uri goodUrl = await good.start();
+        try {
+          cache.noteResolved(
+            'bbb22222222',
+            goodUrl.toString(),
+            251,
+            'audio/webm; codecs="opus"',
+          );
+          await _waitFor(
+            () async => await library.cacheEntry('bbb22222222_251') != null,
+          );
+        } finally {
+          await good.stop();
+        }
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test('eviction memberi tempat dulu bila file muat sesudah eviction',
+        () async {
+      // Tes PENJAGA (guard): mengunci jalur sukses — fetch yang muat
+      // sesudah eviction harus BERHASIL, bukan ditolak. Urutan
+      // pra-tulis vs pasca-fetch dibuktikan tes anggaran lain
+      // (penolakan + penghentian mid-stream di atas, `.part` di bawah):
+      // keadaan akhir eviction pra-tulis dan pasca-fetch sama.
+      final DateTime base = DateTime(2026, 11, 16, 8);
+      await seedCacheEntry('aaa11111111', 251, size: 600, lastAccessed: base);
+      // File baru 500 byte: total 1100 > batas 1000, tapi muat bila
+      // entri lama (600) di-eviction dulu.
+      final List<int> bytes = List<int>.generate(500, (int i) => i % 256);
+      final _RangeServer server = _RangeServer(bytes);
+      final Uri url = await server.start();
+      try {
+        cache.noteResolved(
+          'bbb22222222',
+          url.toString(),
+          251,
+          'audio/webm; codecs="opus"',
+        );
+        await _waitFor(
+          () async => await library.cacheEntry('bbb22222222_251') != null,
+        );
+        expect(await library.cacheEntry('aaa11111111_251'), isNull);
+        expect(
+          await paths.cacheFile('aaa11111111', 251, 'opus').exists(),
+          isFalse,
+        );
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test('file tidak di-fetch bila eviction terhalang lagu yang diputar',
+        () async {
+      final DateTime base = DateTime(2026, 11, 16, 8);
+      await seedCacheEntry('aaa11111111', 251, size: 600, lastAccessed: base);
+      cache.protectedVideoId = () => 'aaa11111111';
+      // Badan lambat: pembeda penolakan pra-fetch (`.part` tidak pernah
+      // dibuat) dari eviction pasca-fetch (`.part` ADA saat asersi).
+      final List<int> bytes = List<int>.generate(500, (int i) => i % 256);
+      final _SlowRangeServer server = _SlowRangeServer(bytes);
+      final Uri url = await server.start();
+      try {
+        cache.noteResolved(
+          'bbb22222222',
+          url.toString(),
+          251,
+          'audio/webm; codecs="opus"',
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        expect(await library.cacheEntry('bbb22222222_251'), isNull);
+        expect(
+          await paths.cachePartFile('bbb22222222', 251, 'opus').exists(),
+          isFalse,
+          reason: 'anggaran ditolak sebelum `.part` dibuat',
+        );
+        // Entri yang dilindungi tetap utuh.
+        expect(await library.cacheEntry('aaa11111111_251'), isNotNull);
+        expect(
+          await paths.cacheFile('aaa11111111', 251, 'opus').exists(),
+          isTrue,
+        );
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  group('R2-L4: timeout + watchdog stall fetch cache', () {
+    test('server yang diam sesudah chunk pertama: fetch dibatalkan, '
+        'antrean lanjut', () async {
+      final StreamCacheService fastCache = StreamCacheService(
+        library: library,
+        paths: paths,
+        cacheLimitBytes: 1000,
+        stallTimeout: const Duration(milliseconds: 300),
+      );
+      final List<int> first = List<int>.filled(64, 7);
+      final _StallingServer stalling = _StallingServer(first, 512);
+      final Uri badUrl = await stalling.start();
+      try {
+        fastCache.noteResolved(
+          'aaa11111111',
+          badUrl.toString(),
+          251,
+          'audio/webm; codecs="opus"',
+        );
+        // Watchdog 300 ms: fetch harus sudah dibatalkan dalam 5 dtk,
+        // jauh sebelum server menutup di 30 dtk.
+        await Future<void>.delayed(const Duration(seconds: 2));
+        expect(await library.cacheEntry('aaa11111111_251'), isNull);
+        // Kunci fetch lepas: fetch berikutnya jalan (antrean tidak macet).
+        final List<int> ok = List<int>.generate(64, (int i) => i);
+        final _RangeServer good = _RangeServer(ok);
+        final Uri goodUrl = await good.start();
+        try {
+          fastCache.noteResolved(
+            'bbb22222222',
+            goodUrl.toString(),
+            251,
+            'audio/webm; codecs="opus"',
+          );
+          await _waitFor(
+            () async => await library.cacheEntry('bbb22222222_251') != null,
+          );
+        } finally {
+          await good.stop();
+        }
+      } finally {
+        await stalling.stop();
+        await fastCache.dispose();
+      }
+    });
+
+    test('server yang tidak pernah membalas header: fetch dibatalkan, '
+        'antrean lanjut', () async {
+      final StreamCacheService fastCache = StreamCacheService(
+        library: library,
+        paths: paths,
+        cacheLimitBytes: 1000,
+        fetchHeaderTimeout: const Duration(milliseconds: 300),
+      );
+      final _MuteServer mute = _MuteServer();
+      final Uri badUrl = await mute.start();
+      try {
+        fastCache.noteResolved(
+          'aaa11111111',
+          badUrl.toString(),
+          251,
+          'audio/webm; codecs="opus"',
+        );
+        await Future<void>.delayed(const Duration(seconds: 2));
+        expect(await library.cacheEntry('aaa11111111_251'), isNull);
+        final List<int> ok = List<int>.generate(64, (int i) => i);
+        final _RangeServer good = _RangeServer(ok);
+        final Uri goodUrl = await good.start();
+        try {
+          fastCache.noteResolved(
+            'bbb22222222',
+            goodUrl.toString(),
+            251,
+            'audio/webm; codecs="opus"',
+          );
+          await _waitFor(
+            () async => await library.cacheEntry('bbb22222222_251') != null,
+          );
+        } finally {
+          await good.stop();
+        }
+      } finally {
+        await mute.stop();
+        await fastCache.dispose();
+      }
+    });
+  });
+
+  group('R2-L3: nama file cache dari database divalidasi bentuknya', () {
+    Future<File> seedSentinel() async {
+      final File sentinel = File('${temp.path}/sentinel.txt');
+      await sentinel.writeAsBytes(List<int>.filled(100, 5));
+      return sentinel;
+    }
+
+    Future<void> seedPoisonedEntry({DateTime? lastAccessed}) async {
+      final DateTime now = DateTime.now();
+      await library.upsertCacheEntry(
+        CacheEntriesCompanion.insert(
+          key: 'aaa11111111_251',
+          // Dari direktori cache, ini menunjuk ke file DI LUAR cache
+          // (temp/sentinel.txt) — kode lama akan membaca/menghapusnya.
+          filePath: '../sentinel.txt',
+          sizeBytes: 100,
+          lastAccessed: lastAccessed ?? now,
+          createdAt: now,
+        ),
+      );
+    }
+
+    test('fileFor: entri beracun dihapus, file di luar cache tidak '
+        'disentuh', () async {
+      final File sentinel = await seedSentinel();
+      await seedPoisonedEntry();
+      // Ukuran sentinel sama dengan sizeBytes entri: kode lama akan
+      // mengembalikan file itu sebagai "cache yang bisa dipakai".
+      expect(await cache.fileFor('aaa11111111'), isNull);
+      expect(await library.cacheEntry('aaa11111111_251'), isNull);
+      expect(await sentinel.exists(), isTrue);
+      expect(await sentinel.length(), 100);
+    });
+
+    test('evictIfNeeded: entri beracun dihapus, file di luar cache tidak '
+        'dihapus', () async {
+      final File sentinel = await seedSentinel();
+      final DateTime base = DateTime(2026, 11, 16, 8);
+      // Entri beracun paling lama tidak diakses: eviction menghapusnya
+      // pertama.
+      await seedPoisonedEntry(lastAccessed: base);
+      await seedCacheEntry(
+        'bbb22222222',
+        251,
+        size: 950,
+        lastAccessed: base.add(const Duration(hours: 1)),
+      );
+      // Total manifest 1050 > batas 1000: eviction berjalan.
+      await cache.setCacheLimitBytes(100);
+      expect(await library.cacheEntry('aaa11111111_251'), isNull);
+      expect(await sentinel.exists(), isTrue);
+      expect(await sentinel.length(), 100);
+    });
+
+    test('invalidate: entri beracun dihapus, file di luar cache tidak '
+        'dihapus', () async {
+      final File sentinel = await seedSentinel();
+      await seedPoisonedEntry();
+      await cache.invalidate('aaa11111111');
+      expect(await library.cacheEntry('aaa11111111_251'), isNull);
+      expect(await sentinel.exists(), isTrue);
+    });
+
+    test('clearAll: entri beracun dihapus, file di luar cache tidak '
+        'dihapus', () async {
+      final File sentinel = await seedSentinel();
+      await seedPoisonedEntry();
+      await cache.clearAll();
+      expect(await library.cacheEntry('aaa11111111_251'), isNull);
+      expect(await sentinel.exists(), isTrue);
+    });
+
+    test('reconcile: entri beracun dihapus sebagai basi, file di luar '
+        'cache tidak dihapus', () async {
+      final File sentinel = await seedSentinel();
+      await seedPoisonedEntry();
+      final CacheReconcileResult result = await cache.reconcile();
+      expect(result.staleEntriesDeleted, 1);
+      expect(await library.cacheEntry('aaa11111111_251'), isNull);
+      expect(await sentinel.exists(), isTrue);
+    });
+
+    test('fetch ulang: entri beracun diganti entri sah, file di luar '
+        'cache tidak disentuh', () async {
+      final File sentinel = await seedSentinel();
+      await seedPoisonedEntry();
+      final List<int> bytes = List<int>.generate(64, (int i) => i);
+      final _RangeServer server = _RangeServer(bytes);
+      final Uri url = await server.start();
+      try {
+        cache.noteResolved(
+          'aaa11111111',
+          url.toString(),
+          251,
+          'audio/webm; codecs="opus"',
+        );
+        await _waitFor(() async {
+          final CacheEntry? entry =
+              await library.cacheEntry('aaa11111111_251');
+          return entry != null &&
+              entry.filePath == 'aaa11111111_251.opus';
+        });
+        expect(await sentinel.exists(), isTrue);
         expect(
           await paths.cacheFile('aaa11111111', 251, 'opus').exists(),
           isTrue,

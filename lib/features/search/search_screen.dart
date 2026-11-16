@@ -81,7 +81,14 @@ class _SearchScreenState extends State<SearchScreen> {
   Future<void> _reloadHistory() async {
     final SearchService? service = _service;
     if (service == null) return;
-    final List<String> history = await service.recentSearches();
+    // R2-L1: riwayat adalah pelengkap — kegagalan database saat
+    // membacanya tidak boleh melempar ke pemanggil (termasuk _submit).
+    final List<String> history;
+    try {
+      history = await service.recentSearches();
+    } catch (_) {
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _history = history;
@@ -135,18 +142,34 @@ class _SearchScreenState extends State<SearchScreen> {
       _suggestions = const <String>[];
       _submittedQuery = query;
     });
-    final CombinedSearch results = _libraryOnly
-        ? CombinedSearch(
-            local: await service.searchLocalOnly(
-              query,
-              limit: kSearchLocalLimit,
-            ),
-          )
-        : await service.search(query);
-    if (!mounted || generation != _generation) return;
-    if (_libraryOnly) {
-      await service.recordSearchQuery(query);
+    // R2-L1: sabuk kedua sesudah SearchService (yang sudah menangkap
+    // Object di search/browse) — `_loading` WAJIB kembali false di
+    // semua jalur; tanpa try/catch di sini, satu error tak terduga
+    // (mis. database saat mencatat query) membuat layar macet di
+    // loading selamanya.
+    final CombinedSearch results;
+    try {
+      results = _libraryOnly
+          ? CombinedSearch(
+              local: await service.searchLocalOnly(
+                query,
+                limit: kSearchLocalLimit,
+              ),
+            )
+          : await service.search(query);
+      if (_libraryOnly) {
+        await service.recordSearchQuery(query);
+      }
+    } on Object catch (_) {
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _results = const CombinedSearch(failure: OnlineFailure.server);
+        _loading = false;
+      });
+      await _reloadHistory();
+      return;
     }
+    if (!mounted || generation != _generation) return;
     setState(() {
       _results = results;
       _loading = false;

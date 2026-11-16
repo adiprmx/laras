@@ -134,12 +134,25 @@ int? extractSignatureTimestamp(String baseJs) {
   return value == null ? null : int.tryParse(value);
 }
 
-/// Ekstrak tabel string `w` dari base.js (`w='...'.split(";");`).
+/// Ekstrak tabel string `w` dari base.js.
+///
+/// Bentuk lama (s.d. fad7e4e9): `w='...'.split(";");` — kutip tunggal,
+/// delimiter `;`. Bentuk baru (17 Nov 2026): `w="...".split("X");` —
+/// kutip ganda, delimiter bervariasi per rilis (`;` di ad8d59ae, `{` di
+/// b559f50c). Kedua bentuk diterima (lama dulu — rute tertentu masih
+/// menyajikan fad7e4e9). Isi minimal 100 karakter supaya tidak salah
+/// cocok dengan string pendek lain; `\"` di dalam isi ditangani.
+/// Bila tidak ada yang cocok, kembalikan null (buildPlayerScript lalu
+/// melempar unknownPlayerHash — gagal keras, bukan diam-diam).
 String? extractStringTable(String baseJs) {
-  final RegExpMatch? match = RegExp(
+  final RegExpMatch? legacy = RegExp(
     "w='[^']*'\\.split\\(\";\"\\);",
   ).firstMatch(baseJs);
-  return match?.group(0);
+  if (legacy != null) return legacy.group(0);
+  final RegExpMatch? current = RegExp(
+    r'w="(?:\\.|[^"\\]){100,}"\.split\("[^"]{1,3}"\);',
+  ).firstMatch(baseJs);
+  return current?.group(0);
 }
 
 /// Ekstrak definisi fungsi top-level `NAME=function(...)` dengan
@@ -278,6 +291,32 @@ String? _findHelperObject(String functionBody) {
   return null;
 }
 
+/// Global bawaan JavaScript yang tidak punya literal di base.js.
+///
+/// Bila helper call site adalah salah satunya (teramati: `String` di
+/// base.js ad8d59ae, 17 Nov 2026 — cipher memakai `String[w[...]]`
+/// seperti `String.fromCharCode`, dan metode string lewat parameter),
+/// prelude tidak perlu memuat definisinya: QuickJS sudah
+/// menyediakannya. Helper BUKAN builtin yang tidak ketemu literalnya
+/// tetap gagal keras (kerusakan nyata).
+const Set<String> kJsBuiltinGlobals = <String>{
+  'String',
+  'Array',
+  'Object',
+  'Math',
+  'Number',
+  'Boolean',
+  'JSON',
+  'RegExp',
+  'Date',
+  'Map',
+  'Set',
+  'Symbol',
+  'BigInt',
+  'parseInt',
+  'parseFloat',
+};
+
 /// Rakit [PlayerScript] dari sumber base.js + jsUrl.
 ///
 /// Melempar [ExtractorException] penyebab unknownPlayerHash bila ada
@@ -303,13 +342,18 @@ PlayerScript buildPlayerScript(String jsUrl, String baseJs) {
     baseJs,
     callSite.helperObjectName,
   );
-  if (innerFn == null ||
-      middleFn == null ||
-      outerFn == null ||
-      helperObj == null) {
+  if (innerFn == null || middleFn == null || outerFn == null) {
     throw const ExtractorException(
       ResolveFailureCause.unknownPlayerHash,
       detail: 'definisi fungsi signature tidak ketemu di base.js',
+    );
+  }
+  if (helperObj == null &&
+      !kJsBuiltinGlobals.contains(callSite.helperObjectName)) {
+    throw ExtractorException(
+      ResolveFailureCause.unknownPlayerHash,
+      detail: 'literal objek helper ${callSite.helperObjectName} '
+          'tidak ketemu di base.js',
     );
   }
   final String prelude = <String>[
@@ -317,7 +361,7 @@ PlayerScript buildPlayerScript(String jsUrl, String baseJs) {
     '$innerFn;',
     '$middleFn;',
     '$outerFn;',
-    '$helperObj;',
+    if (helperObj != null) '$helperObj;',
   ].join('\n');
   return PlayerScript(
     jsUrl: jsUrl,

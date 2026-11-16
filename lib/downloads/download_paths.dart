@@ -124,15 +124,24 @@ class DownloadPaths {
     return File('${downloadFile(videoId, extension).path}.part');
   }
 
+  /// Benar bila [relativePath] adalah nama relatif unduhan yang sah
+  /// (`<videoId>.<ekstensi>`). Dipakai pemanggil yang hanya punya
+  /// direktori sebagai string dan tidak bisa memakai
+  /// [downloadFileFromRelative] (mis. `SongView.toTrack`, R2-L3).
+  static bool isValidDownloadRelativePath(String relativePath) {
+    final List<String> parts = relativePath.split('.');
+    if (parts.length != 2) return false;
+    if (!_videoIdPattern.hasMatch(parts[0])) return false;
+    if (!_extensionPattern.hasMatch(parts[1])) return false;
+    return true;
+  }
+
   /// File unduhan dari nama relatif yang tersimpan di database.
   ///
   /// Nama relatif selalu `<videoId>.<ekstensi>`; bila formatnya tidak
   /// cocok (data lama/rusak), mengembalikan null daripada menebak path.
   File? downloadFileFromRelative(String relativePath) {
-    final List<String> parts = relativePath.split('.');
-    if (parts.length != 2) return null;
-    if (!_videoIdPattern.hasMatch(parts[0])) return null;
-    if (!_extensionPattern.hasMatch(parts[1])) return null;
+    if (!isValidDownloadRelativePath(relativePath)) return null;
     return File('${downloadsDir.path}/$relativePath');
   }
 
@@ -151,6 +160,34 @@ class DownloadPaths {
   /// File sementara cache (`.part`).
   File cachePartFile(String videoId, int itag, String extension) {
     return File('${cacheFile(videoId, itag, extension).path}.part');
+  }
+
+  /// Benar bila [relativePath] adalah nama relatif cache yang sah
+  /// (`<videoId>_<itag>.<ekstensi>`). videoId boleh berisi `_`, jadi
+  /// itag dipisahkan di `_` TERAKHIR dan harus berupa angka saja.
+  static bool isValidCacheRelativePath(String relativePath) {
+    final List<String> parts = relativePath.split('.');
+    if (parts.length != 2) return false;
+    final String name = parts[0];
+    final int cut = name.lastIndexOf('_');
+    if (cut <= 0) return false;
+    if (!_videoIdPattern.hasMatch(name.substring(0, cut))) return false;
+    if (!RegExp(r'^[0-9]+$').hasMatch(name.substring(cut + 1))) return false;
+    if (!_extensionPattern.hasMatch(parts[1])) return false;
+    return true;
+  }
+
+  /// File cache dari nama relatif yang tersimpan di database (R2-L3).
+  ///
+  /// Cermin [downloadFileFromRelative]: nama relatif selalu
+  /// `<videoId>_<itag>.<ekstensi>`; bila formatnya tidak cocok (data
+  /// lama/rusak — mis. `../` dari database yang dirusak), mengembalikan
+  /// null daripada membangun path di luar direktori cache. Enam situs
+  /// di `StreamCacheService` yang dulu membangun `File` langsung dari
+  /// `entry.filePath` WAJIB memakai helper ini.
+  File? cacheFileFromRelative(String relativePath) {
+    if (!isValidCacheRelativePath(relativePath)) return null;
+    return File('${cacheDir.path}/$relativePath');
   }
 
   /// Kunci manifest cache untuk [videoId] + [itag].

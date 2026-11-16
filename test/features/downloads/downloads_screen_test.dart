@@ -118,6 +118,9 @@ void main() {
       urlSource: _FakeUrlSource(base.toString()),
       freeSpace: _FakeFreeSpace(),
       backoffFor: (_) => Duration.zero,
+      // Server tes adalah HTTP lokal (127.0.0.1): validator allowlist
+      // produksi (R2-M1) dilonggarkan di sini.
+      urlValidator: (_) => true,
     );
   });
 

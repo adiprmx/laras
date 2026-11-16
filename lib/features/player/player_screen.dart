@@ -17,18 +17,40 @@ import 'package:laras/core/widgets/section_header.dart';
 import 'package:laras/data/database.dart';
 import 'package:laras/features/downloads/download_button.dart';
 import 'package:laras/features/library/song_row.dart';
+import 'package:laras/features/lyrics/lyrics_service.dart';
+import 'package:laras/features/lyrics/lyrics_sheet.dart';
 import 'package:laras/features/player/playback_error_banner.dart';
+import 'package:laras/features/player/sleep_timer_sheet.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/player/audio_player_port.dart';
+import 'package:laras/player/equalizer_service.dart';
 import 'package:laras/player/player_state.dart';
+import 'package:laras/player/sleep_timer.dart';
 import 'package:laras/player/track.dart';
 import 'package:laras/resilience/check_updates_action.dart';
 import 'package:laras/resilience/resilience_scope.dart';
 
 class PlayerScreen extends StatefulWidget {
-  const PlayerScreen({super.key, required this.port});
+  const PlayerScreen({
+    super.key,
+    required this.port,
+    this.sleepTimer,
+    this.equalizerService,
+    this.lyricsService,
+  });
 
   final AudioPlayerPort port;
+
+  /// Timer tidur (P7). Null berarti fitur disembunyikan (tes tanpa
+  /// service) — bukan crash.
+  final SleepTimerService? sleepTimer;
+
+  /// Equalizer (P7). Null berarti bagian EQ disembunyikan dari lembar
+  /// pengaturan suara.
+  final EqualizerService? equalizerService;
+
+  /// Layanan lirik (P7). Null berarti tombol lirik disembunyikan.
+  final LyricsService? lyricsService;
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -49,14 +71,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final PlayerSnapshot snap = widget.port.snapshot;
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: AppColors.elevated,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(AppRadius.sheet),
         ),
       ),
+      // Bagian equalizer (P7) menambah tinggi lembar: batasi 90% layar
+      // dan biarkan isinya digulir bila melebihi itu.
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.9,
+      ),
       builder: (BuildContext sheetContext) {
-        return _SoundSheet(port: widget.port, initial: snap, strings: strings);
+        return _SoundSheet(
+          port: widget.port,
+          initial: snap,
+          strings: strings,
+          equalizerService: widget.equalizerService,
+        );
       },
     );
   }
@@ -364,12 +397,44 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             ),
                             const SizedBox(height: AppSpacing.sm),
                             Center(
-                              child: TextButton.icon(
-                                onPressed: _openSoundSheet,
-                                icon: const Icon(Icons.tune),
-                                label: Text(strings.soundSettings),
+                              child: Wrap(
+                                alignment: WrapAlignment.center,
+                                spacing: AppSpacing.xs,
+                                children: <Widget>[
+                                  TextButton.icon(
+                                    onPressed: _openSoundSheet,
+                                    icon: const Icon(Icons.tune),
+                                    label: Text(strings.soundSettings),
+                                  ),
+                                  if (widget.lyricsService != null)
+                                    TextButton.icon(
+                                      onPressed: () => LyricsSheet.show(
+                                        context,
+                                        track: track,
+                                        service: widget.lyricsService!,
+                                        port: widget.port,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.lyrics_outlined,
+                                      ),
+                                      label: Text(strings.lyrics),
+                                    ),
+                                  if (widget.sleepTimer != null)
+                                    TextButton.icon(
+                                      onPressed: () => SleepTimerSheet.show(
+                                        context,
+                                        service: widget.sleepTimer!,
+                                      ),
+                                      icon: const Icon(Icons.bedtime_outlined),
+                                      label: Text(strings.sleepTimer),
+                                    ),
+                                ],
                               ),
                             ),
+                            if (widget.sleepTimer != null)
+                              _SleepTimerChip(
+                                service: widget.sleepTimer!,
+                              ),
                             const SizedBox(height: AppSpacing.md),
                             SectionHeader(title: strings.queue),
                             const SizedBox(height: AppSpacing.sm),
@@ -397,6 +462,58 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         );
                       },
                 ),
+        );
+      },
+    );
+  }
+}
+
+/// Sisa timer tidur dibulatkan ke atas dalam menit (paling kecil 1).
+int _ceilMinutes(Duration remaining) {
+  final int minutes = (remaining.inSeconds + 59) ~/ 60;
+  return minutes < 1 ? 1 : minutes;
+}
+
+/// Chip hitung mundur timer tidur (P7): tampil hanya saat timer aktif,
+/// mengetuknya membuka lembar pemilih timer.
+class _SleepTimerChip extends StatelessWidget {
+  const _SleepTimerChip({required this.service});
+
+  final SleepTimerService service;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations strings = AppLocalizations.of(context)!;
+    return ValueListenableBuilder<SleepTimerMode?>(
+      valueListenable: service.mode,
+      builder: (BuildContext context, SleepTimerMode? mode, Widget? child) {
+        if (mode == null) return const SizedBox.shrink();
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.xs),
+            child: ActionChip(
+              avatar: const Icon(Icons.bedtime_outlined, size: 18),
+              label: mode == SleepTimerMode.afterSong
+                  ? Text(strings.sleepTimerStopsAfterSong)
+                  : ValueListenableBuilder<Duration?>(
+                      valueListenable: service.remaining,
+                      builder:
+                          (
+                            BuildContext context,
+                            Duration? remaining,
+                            Widget? child,
+                          ) {
+                            return Text(
+                              strings.sleepTimerStopsIn(
+                                _ceilMinutes(remaining ?? Duration.zero),
+                              ),
+                            );
+                          },
+                    ),
+              onPressed: () =>
+                  SleepTimerSheet.show(context, service: service),
+            ),
+          ),
         );
       },
     );
@@ -527,11 +644,15 @@ class _SoundSheet extends StatefulWidget {
     required this.port,
     required this.initial,
     required this.strings,
+    this.equalizerService,
   });
 
   final AudioPlayerPort port;
   final PlayerSnapshot initial;
   final AppLocalizations strings;
+
+  /// Equalizer (P7). Null berarti bagian EQ tidak tampil.
+  final EqualizerService? equalizerService;
 
   @override
   State<_SoundSheet> createState() => _SoundSheetState();
@@ -562,65 +683,245 @@ class _SoundSheetState extends State<_SoundSheet> {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(widget.strings.soundSettings, style: theme.textTheme.titleMedium),
-          const SizedBox(height: AppSpacing.md),
-          Text(
-            widget.strings.playbackSpeed,
-            style: theme.textTheme.titleSmall,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            spacing: AppSpacing.sm,
-            children: _speeds.map((double speed) {
-              final bool selected = _speed == speed;
-              return ChoiceChip(
-                label: Text('${speed}x'),
-                selected: selected,
-                onSelected: (_) {
-                  setState(() => _speed = speed);
-                  widget.port.setSpeed(speed);
-                },
-              );
-            }).toList(growable: false),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Text(widget.strings.pitch, style: theme.textTheme.titleSmall),
-          Row(
-            children: <Widget>[
-              Text('0.5x', style: theme.textTheme.bodySmall),
-              Expanded(
-                child: Slider(
-                  value: _pitch,
-                  min: 0.5,
-                  max: 2.0,
-                  divisions: 15,
-                  label: '${_pitch.toStringAsFixed(1)}x',
-                  onChanged: (double value) {
-                    setState(() => _pitch = value);
-                    widget.port.setPitch(value);
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              widget.strings.soundSettings,
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              widget.strings.playbackSpeed,
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Wrap(
+              spacing: AppSpacing.sm,
+              children: _speeds.map((double speed) {
+                final bool selected = _speed == speed;
+                return ChoiceChip(
+                  label: Text('${speed}x'),
+                  selected: selected,
+                  onSelected: (_) {
+                    setState(() => _speed = speed);
+                    widget.port.setSpeed(speed);
+                  },
+                );
+              }).toList(growable: false),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(widget.strings.pitch, style: theme.textTheme.titleSmall),
+            Row(
+              children: <Widget>[
+                Text('0.5x', style: theme.textTheme.bodySmall),
+                Expanded(
+                  child: Slider(
+                    value: _pitch,
+                    min: 0.5,
+                    max: 2.0,
+                    divisions: 15,
+                    label: '${_pitch.toStringAsFixed(1)}x',
+                    onChanged: (double value) {
+                      setState(() => _pitch = value);
+                      widget.port.setPitch(value);
+                    },
+                  ),
+                ),
+                Text('2.0x', style: theme.textTheme.bodySmall),
+              ],
+            ),
+            SwitchListTile(
+              title: Text(widget.strings.skipSilence),
+              value: _skipSilence,
+              onChanged: (bool value) {
+                setState(() => _skipSilence = value);
+                widget.port.setSkipSilence(value);
+              },
+            ),
+            if (widget.equalizerService != null) ...<Widget>[
+              const Divider(color: AppColors.hairline),
+              _EqualizerSection(
+                service: widget.equalizerService!,
+                port: widget.port,
+                strings: widget.strings,
+              ),
+            ],
+            const SizedBox(height: AppSpacing.sm),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Level pita dalam dB untuk label slider: "0 dB", "+3 dB", "-1,5 dB".
+String _formatDb(int millibels) {
+  final double db = millibels / 100;
+  if (db == 0) return '0 dB';
+  final String sign = db > 0 ? '+' : '';
+  final String text = db == db.roundToDouble()
+      ? db.round().toString()
+      : db.toStringAsFixed(1).replaceAll('.', ',');
+  return '$sign$text dB';
+}
+
+/// Bagian equalizer di lembar pengaturan suara (P7): saklar aktif,
+/// chip preset bawaan perangkat + "atur sendiri", dan slider per pita
+/// dengan label frekuensi tengah asli perangkat.
+///
+/// Slider menulis ke platform saat jari dilepas (bukan tiap gerakan),
+/// supaya geseran tidak membanjiri platform + penyimpanan. Bila HP
+/// tidak menyediakan equalizer, tampil pesan jujur (`noEqualizer`); bila
+/// belum ada lagu yang dimuat (belum ada session id), tampil pesan
+/// `equalizerNeedsSong`.
+class _EqualizerSection extends StatefulWidget {
+  const _EqualizerSection({
+    required this.service,
+    required this.port,
+    required this.strings,
+  });
+
+  final EqualizerService service;
+  final AudioPlayerPort port;
+  final AppLocalizations strings;
+
+  @override
+  State<_EqualizerSection> createState() => _EqualizerSectionState();
+}
+
+class _EqualizerSectionState extends State<_EqualizerSection> {
+  /// Level sementara pita yang sedang digeser (band -> mB).
+  final Map<int, double> _dragLevels = <int, double>{};
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return ValueListenableBuilder<EqualizerInfo?>(
+      valueListenable: widget.service.info,
+      builder: (BuildContext context, EqualizerInfo? info, Widget? child) {
+        if (info == null ||
+            info.bands.isEmpty ||
+            info.minLevelMillibels >= info.maxLevelMillibels) {
+          final bool hasSession =
+              widget.port.androidAudioSessionId != null;
+          return Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.sm),
+            child: Text(
+              hasSession
+                  ? widget.strings.noEqualizer
+                  : widget.strings.equalizerNeedsSong,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.textMuted,
+              ),
+            ),
+          );
+        }
+        final double min = info.minLevelMillibels.toDouble();
+        final double max = info.maxLevelMillibels.toDouble();
+        final int steps = (info.maxLevelMillibels - info.minLevelMillibels) ~/
+            100;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            ValueListenableBuilder<bool>(
+              valueListenable: widget.service.enabled,
+              builder: (BuildContext context, bool enabled, Widget? child) {
+                return SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(widget.strings.equalizer),
+                  value: enabled,
+                  onChanged: (bool value) =>
+                      widget.service.setEnabled(value),
+                );
+              },
+            ),
+            Text(
+              widget.strings.equalizerPreset,
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
+              children: <Widget>[
+                ...info.presets.asMap().entries.map((MapEntry<int, String> e) {
+                  return ChoiceChip(
+                    label: Text(e.value),
+                    selected: info.currentPreset == e.key,
+                    onSelected: (_) => widget.service.setPreset(e.key),
+                  );
+                }),
+                ChoiceChip(
+                  label: Text(widget.strings.equalizerCustom),
+                  selected: info.currentPreset == -1,
+                  onSelected: (_) {
+                    // Beralih ke "atur sendiri" dengan level saat ini:
+                    // tulis ulang level pita pertama (nilainya sama)
+                    // supaya perangkat keluar dari preset.
+                    widget.service.setBandLevel(
+                      0,
+                      info.bands.first.levelMillibels,
+                    );
                   },
                 ),
-              ),
-              Text('2.0x', style: theme.textTheme.bodySmall),
-            ],
-          ),
-          SwitchListTile(
-            title: Text(widget.strings.skipSilence),
-            value: _skipSilence,
-            onChanged: (bool value) {
-              setState(() => _skipSilence = value);
-              widget.port.setSkipSilence(value);
-            },
-          ),
-          const SizedBox(height: AppSpacing.sm),
-        ],
-      ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            ...info.bands.map((EqualizerBand band) {
+              final double level =
+                  _dragLevels[band.index] ?? band.levelMillibels.toDouble();
+              final double clamped = level.clamp(min, max);
+              return Row(
+                children: <Widget>[
+                  SizedBox(
+                    width: 64,
+                    child: Text(
+                      formatEqualizerFrequency(band.centerFreqMilliHz),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  Expanded(
+                    child: Slider(
+                      value: clamped,
+                      min: min,
+                      max: max,
+                      divisions: steps > 0 ? steps : null,
+                      label: _formatDb(clamped.round()),
+                      onChanged: (double value) {
+                        setState(() => _dragLevels[band.index] = value);
+                      },
+                      onChangeEnd: (double value) {
+                        setState(() => _dragLevels.remove(band.index));
+                        widget.service.setBandLevel(
+                          band.index,
+                          value.round(),
+                        );
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: 52,
+                    child: Text(
+                      _formatDb(clamped.round()),
+                      textAlign: TextAlign.end,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontFeatures: const <FontFeature>[
+                          FontFeature.tabularFigures(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }),
+          ],
+        );
+      },
     );
   }
 }

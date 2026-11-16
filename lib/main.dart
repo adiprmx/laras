@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:laras/core/theme/app_theme.dart';
 import 'package:laras/data/database.dart';
@@ -9,6 +10,9 @@ import 'package:laras/extractor/extractor.dart';
 import 'package:laras/features/downloads/downloads_screen.dart';
 import 'package:laras/features/home/home_screen.dart';
 import 'package:laras/features/library/library_screen.dart';
+import 'package:laras/features/lyrics/lrclib_client.dart';
+import 'package:laras/features/lyrics/lyrics_scope.dart';
+import 'package:laras/features/lyrics/lyrics_service.dart';
 import 'package:laras/features/onboarding/onboarding_flow.dart';
 import 'package:laras/features/player/mini_player.dart';
 import 'package:laras/features/player/player_screen.dart';
@@ -172,6 +176,18 @@ Future<void> main() async {
     unawaited(
       _reconcileAndStart(downloads, cache, libraryService, paths),
     );
+    // P7 (MUST #3): pulihkan antrean + posisi dari sesi sebelumnya, di
+    // latar (tidak memblokir frame pertama). Penyimpanan otomatis
+    // dimulai SESUDAH restore selesai, supaya snapshot awal yang kosong
+    // tidak menimpa antrean tersimpan.
+    final QueuePersistence queuePersistence = QueuePersistence(
+      port: playerService.port,
+      library: libraryService,
+      downloadsDir: paths.downloadsDir.path,
+    );
+    unawaited(
+      queuePersistence.restore().then((_) => queuePersistence.start()),
+    );
   } catch (error, stackTrace) {
     debugPrint('Laras: database gagal dibuka: $error\n$stackTrace');
     libraryFailed = true;
@@ -179,6 +195,21 @@ Future<void> main() async {
     // tanpa riwayat).
     searchService = SearchService(api: InnertubeSearchApi());
   }
+  // P7: lirik (LRCLIB + cache database). Tanpa database, fetch-only
+  // (tanpa cache) — dipakai saat database gagal dibuka.
+  final LyricsService lyricsService = LyricsService(
+    client: LrclibClient(),
+    library: libraryService,
+  );
+  // P7 (MUST #13): tautan dalam dari platform (EventChannel).
+  final DeepLinkService deepLinkService = DeepLinkService(
+    links: const EventChannel(
+      'id.my.adipmusic.laras/deep_link',
+    ).receiveBroadcastStream().map((Object? e) => e.toString()),
+    resolver: playerService.resolver,
+    port: playerService.port,
+  );
+  deepLinkService.start();
   runApp(
     LarasApp(
       playerService: playerService,
@@ -193,6 +224,8 @@ Future<void> main() async {
       externalLinks: externalLinks,
       dataWipe: dataWipe,
       internalLog: internalLog,
+      lyricsService: lyricsService,
+      deepLinkService: deepLinkService,
     ),
   );
 }
@@ -255,6 +288,8 @@ class LarasApp extends StatelessWidget {
     this.externalLinks,
     this.dataWipe,
     this.internalLog,
+    this.lyricsService,
+    this.deepLinkService,
   });
 
   final PlayerService? playerService;
@@ -276,6 +311,14 @@ class LarasApp extends StatelessWidget {
   final DataWipeService? dataWipe;
   final InternalLog? internalLog;
 
+  /// Layanan lirik (P7), null bila app dipompa di widget test tanpa
+  /// service: tombol lirik disembunyikan, bukan crash.
+  final LyricsService? lyricsService;
+
+  /// Service tautan dalam (P7, MUST #13), null bila app dipompa di
+  /// widget test tanpa service.
+  final DeepLinkService? deepLinkService;
+
   @override
   Widget build(BuildContext context) {
     final PlayerService? service = playerService;
@@ -292,13 +335,17 @@ class LarasApp extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const <Locale>[Locale('id')],
-      home: const HomeShell(),
+      home: HomeShell(
+        deepLinkService: deepLinkService,
+        sleepTimer: service?.sleepTimer,
+      ),
     );
     app = LibraryScope(
       service: libraryService,
       failed: libraryFailed,
       child: app,
     );
+    app = LyricsScope(service: lyricsService, child: app);
     app = SearchScope(service: searchService, child: app);
     app = DownloadsScope(
       downloads: downloadService,
@@ -325,7 +372,15 @@ class LarasApp extends StatelessWidget {
 /// Mini-player hanya tampil bila ada lagu di player. Ketuk mini-player
 /// membuka Player layar penuh dengan transisi naik dari bawah.
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key});
+  const HomeShell({super.key, this.deepLinkService, this.sleepTimer});
+
+  /// Service tautan dalam (P7, MUST #13). Null di widget test tanpa
+  /// service: tidak ada langganan hasil tautan.
+  final DeepLinkService? deepLinkService;
+
+  /// Timer tidur (P7). Null di widget test tanpa service: tidak ada
+  /// SnackBar kejadian timer.
+  final SleepTimerService? sleepTimer;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -337,6 +392,9 @@ class _HomeShellState extends State<HomeShell> {
   /// Orkestrasi first-run sudah pernah dimulai (sekali per shell).
   bool _firstRunStarted = false;
 
+  StreamSubscription<DeepLinkOutcome>? _deepLinkSub;
+  StreamSubscription<SleepTimerEvent>? _sleepTimerSub;
+
   @override
   void initState() {
     super.initState();
@@ -345,6 +403,51 @@ class _HomeShellState extends State<HomeShell> {
     // frame pertama supaya Navigator + localizations sudah tersedia.
     // Satu pemilik urutan: HomeScreen TIDAK auto-show apa pun.
     WidgetsBinding.instance.addPostFrameCallback((_) => _runFirstRun());
+    // P7: hasil tautan dalam + kejadian timer tidur dilaporkan lewat
+    // SnackBar di shell (selalu terpasang, di tab mana pun pengguna
+    // berada) — bukan di layar pemutar yang bisa saja sedang tertutup.
+    final DeepLinkService? deepLinks = widget.deepLinkService;
+    if (deepLinks != null) {
+      _deepLinkSub = deepLinks.outcomes.listen((DeepLinkOutcome outcome) {
+        if (outcome == DeepLinkOutcome.failed && mounted) {
+          _showSnack(AppLocalizations.of(context)!.deepLinkFailed);
+        }
+      });
+      // Tautan yang ditangani sebelum shell terpasang (cold start):
+      // hasilnya tersimpan di lastOutcome — laporkan sekali.
+      if (deepLinks.lastOutcome == DeepLinkOutcome.failed) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _showSnack(AppLocalizations.of(context)!.deepLinkFailed);
+          }
+        });
+      }
+    }
+    final SleepTimerService? timer = widget.sleepTimer;
+    if (timer != null) {
+      _sleepTimerSub = timer.events.listen((SleepTimerEvent event) {
+        if (!mounted) return;
+        final AppLocalizations strings = AppLocalizations.of(context)!;
+        _showSnack(
+          event == SleepTimerEvent.done
+              ? strings.sleepTimerDone
+              : strings.sleepTimerCancelled,
+        );
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _deepLinkSub?.cancel();
+    _sleepTimerSub?.cancel();
+    super.dispose();
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   /// Urutan sekali-jalan untuk pengguna baru.
@@ -428,11 +531,17 @@ class _HomeShellState extends State<HomeShell> {
                 onTap: () {
                   Navigator.of(context).push(
                     PageRouteBuilder<void>(
-                      pageBuilder: (
-                        BuildContext context,
-                        Animation<double> animation,
-                        Animation<double> secondaryAnimation,
-                      ) => PlayerScreen(port: port),
+                      pageBuilder:
+                          (
+                            BuildContext context,
+                            Animation<double> animation,
+                            Animation<double> secondaryAnimation,
+                          ) => PlayerScreen(
+                            port: port,
+                            sleepTimer: service.sleepTimer,
+                            equalizerService: service.equalizerService,
+                            lyricsService: LyricsScope.maybeOf(context),
+                          ),
                       transitionsBuilder:
                           (
                             BuildContext context,

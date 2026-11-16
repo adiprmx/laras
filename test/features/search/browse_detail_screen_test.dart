@@ -215,6 +215,35 @@ void main() {
     );
     expect(find.text(strings.noSongsInBrowse), findsOneWidget);
   });
+
+  testWidgets('R2-L1: future browse yang error menampilkan pesan + coba '
+      'lagi, bukan shimmer selamanya', (WidgetTester tester) async {
+    setPhoneViewport(tester);
+    final _FlakyBrowseService flaky = _FlakyBrowseService();
+    searchService = flaky;
+    final AppLocalizations strings = await pumpDetail(tester);
+    expect(find.text(strings.browseFailedTitle), findsOneWidget);
+    expect(find.text(strings.exploreFailedHttp), findsOneWidget);
+    // Coba lagi sesudah layanan pulih: halaman tampil.
+    flaky.throwBrowse = false;
+    await tester.tap(find.text(strings.retry));
+    await tester.pumpAndSettle();
+    expect(find.text('Semua Tentang Kita'), findsOneWidget);
+  });
+}
+
+/// Layanan yang browse-nya melempar StateError sampai saklar dimatikan
+/// (R2-L1: mensimulasikan future yang error di FutureBuilder).
+class _FlakyBrowseService extends SearchService {
+  _FlakyBrowseService() : super(api: FakeOnlineApi(browsePage: artistPage));
+
+  bool throwBrowse = true;
+
+  @override
+  Future<BrowseOutcome> browse(String browseId, {String? params}) async {
+    if (throwBrowse) throw StateError('database rusak (tes)');
+    return super.browse(browseId, params: params);
+  }
 }
 
 /// API palsu yang menjawab per browseId (untuk navigasi berantai).
