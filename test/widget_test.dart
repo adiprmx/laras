@@ -53,13 +53,13 @@ void main() {
     }
     expect(find.text(strings.homeEmptyTitle), findsNothing);
 
-    // Tab Cari menampilkan layar "Segera hadir", bukan kontrol mati.
+    // Tab Cari menampilkan kolom cari + petunjuk, bukan layar mati.
     await tester.tap(
       find.descendant(of: tabBar, matching: find.text(strings.tabSearch)),
     );
     await tester.pumpAndSettle();
-    expect(find.text(strings.comingSoon), findsOneWidget);
-    expect(find.text(strings.searchComingSoonBody), findsOneWidget);
+    expect(find.text(strings.searchHint), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
 
     // Tab Unduhan menampilkan layar "Segera hadir".
     await tester.tap(

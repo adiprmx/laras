@@ -1,5 +1,5 @@
 {
-  "@@last_modified": "2026-11-16T04:10:00.000",
+  "@@last_modified": "2026-11-16T07:15:00.000",
   "@@locale": "id",
   "@aboutLicenses": {
     "description": "Baris dan layar Tentang."
@@ -779,10 +779,6 @@
   "tabSearch": "Cari",
   "understood": "Mengerti",
   "viewDetails": "Lihat",
-  "searchComingSoonBody": "Pencarian belum tersedia di versi ini. Sementara itu, lagu di beranda sudah bisa langsung diputar.",
-  "@searchComingSoonBody": {
-    "description": "P3: K-F2-08/K-F2-09."
-  },
   "homeSongsTitle": "Lagu Pilihan",
   "@homeSongsTitle": {
     "description": "P3: K-F2-08/K-F2-09."
@@ -822,5 +818,73 @@
   "removeFromLibrary": "Hapus dari Library",
   "@removeFromLibrary": {
     "description": "P3: UI library."
+  },
+  "searchFieldHint": "Cari lagu, album, atau artis",
+  "@searchFieldHint": {
+    "description": "P4: teks petunjuk di dalam kolom cari."
+  },
+  "searchClear": "Hapus teks",
+  "@searchClear": {
+    "description": "P4: label aksesibilitas tombol silang di kolom cari."
+  },
+  "historyDeleted": "Riwayat dihapus",
+  "@historyDeleted": {
+    "description": "P4: pesan setelah satu riwayat pencarian dihapus."
+  },
+  "undo": "Urungkan",
+  "@undo": {
+    "description": "P4: tombol mengembalikan riwayat yang baru dihapus."
+  },
+  "clearSearchHistoryTitle": "Hapus semua riwayat pencarian?",
+  "@clearSearchHistoryTitle": {
+    "description": "P4: judul dialog konfirmasi hapus semua riwayat pencarian."
+  },
+  "clearSearchHistoryBody": "Riwayat pencarianmu akan hilang dari HP ini.",
+  "@clearSearchHistoryBody": {
+    "description": "P4: isi dialog konfirmasi hapus semua riwayat pencarian."
+  },
+  "onlineResults": "Dari internet",
+  "@onlineResults": {
+    "description": "P4: label kelompok hasil pencarian dari internet."
+  },
+  "noSongsInBrowse": "Belum ada lagu di sini.",
+  "@noSongsInBrowse": {
+    "description": "P4: isi empty state halaman browse tanpa lagu."
+  },
+  "moodsAndGenres": "Mood dan genre",
+  "@moodsAndGenres": {
+    "description": "P4: baris ke halaman mood dan genre di seksi Jelajah."
+  },
+  "searchServiceChanged": "Layanan musik sedang berubah, pencarian belum bisa dipakai. Lagu di HP ini tetap bisa diputar.",
+  "@searchServiceChanged": {
+    "description": "P4: pesan bila respons pencarian tidak bisa dibaca karena layanan berubah (PRD B1.7)."
+  },
+  "noResultsTitle": "Tidak ada hasil",
+  "@noResultsTitle": {
+    "description": "P4: judul empty state pencarian tanpa hasil."
+  },
+  "browseFailedTitle": "Halaman ini belum bisa dibuka",
+  "@browseFailedTitle": {
+    "description": "P4: judul empty state halaman browse gagal dimuat."
+  },
+  "browseEmptyBody": "Coba buka yang lain atau kembali nanti.",
+  "@browseEmptyBody": {
+    "description": "P4: isi empty state halaman browse tanpa lagu."
+  },
+  "playFailedTimeout": "Internet lambat, lagu belum sempat dimuat. Coba lagi.",
+  "@playFailedTimeout": {
+    "description": "P0: pesan saat lagu gagal diputar karena koneksi terlalu lambat (bukan tanpa internet)."
+  },
+  "playFailedNetworkShort": "Tidak ada internet",
+  "@playFailedNetworkShort": {
+    "description": "P0: versi satu baris noInternet untuk mini-player."
+  },
+  "playFailedTimeoutShort": "Internet lambat",
+  "@playFailedTimeoutShort": {
+    "description": "P0: versi satu baris playFailedTimeout untuk mini-player."
+  },
+  "playFailedCannotPlayShort": "Tidak bisa diputar",
+  "@playFailedCannotPlayShort": {
+    "description": "P0: versi satu baris songCannotPlay untuk mini-player."
   }
 }

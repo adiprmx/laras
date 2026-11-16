@@ -24,6 +24,21 @@ class _RealHttpOverrides extends HttpOverrides {
       super.createHttpClient(context);
 }
 
+/// Loader config yang selalu mengembalikan nilai bawaan (tanpa fetch
+/// remote): tes resolve end-to-end memakai urutan fallback bawaan
+/// (WEB_REMIX -> MWEB -> ANDROID_VR) apa pun isi config remote saat ini.
+class _DefaultsConfigLoader extends RemoteConfigLoader {
+  _DefaultsConfigLoader({required super.prefs});
+
+  @override
+  Future<RemotePlayerConfig> current({bool forceRefresh = false}) async =>
+      RemotePlayerConfig.defaults();
+
+  @override
+  Future<RemotePlayerConfig> refresh({bool force = false}) async =>
+      RemotePlayerConfig.defaults();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   // Pasang SEBELUM tes berjalan: binding di atas memasang mock HTTP.
@@ -75,6 +90,55 @@ void main() {
       expect(script.sigCallSite.middleName, isNotEmpty);
       expect(script.preludeCode, contains('function'));
     }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('player ANDROID_VR nyata mengembalikan URL langsung tanpa sts (P0)', () async {
+      final InnertubeClient client = InnertubeClient();
+      // Alur sama seperti StreamResolver mode terdegradasi: visitorData
+      // dulu (dari client pertama), lalu player VR TANPA sts.
+      final String? visitorData = await client.ensureVisitorData(
+        kWebRemixClient,
+      );
+      final ParsedPlayerResponse parsed = await client.fetchPlayer(
+        'k2XdBPv0D3Y',
+        kAndroidVrClient,
+        visitorData: visitorData,
+      );
+      expect(parsed.playability, Playability.ok);
+      final List<int> itags =
+          parsed.audioFormats.map((f) => f.itag).toList();
+      expect(itags, containsAll(<int>[140, 251]));
+      expect(
+        parsed.audioFormats.any((f) => f.hasDirectUrl),
+        isTrue,
+        reason: 'ANDROID_VR mengembalikan URL audio langsung',
+      );
+      expect(
+        parsed.audioFormats.any((f) => f.needsSolver),
+        isFalse,
+        reason: 'ANDROID_VR tidak mengembalikan format cipher',
+      );
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('resolve end-to-end lagu insiden P0 (k2XdBPv0D3Y) berhasil', () async {
+      final InnertubeClient client = InnertubeClient();
+      final QuickJsSignatureSolver solver = QuickJsSignatureSolver();
+      try {
+        final StreamResolver resolver = StreamResolver(
+          innertube: client,
+          solver: solver,
+          configLoader: _DefaultsConfigLoader(prefs: prefs),
+          scriptLoader: PlayerScriptLoader(client: client),
+        );
+        // Lagu yang gagal total di HP owner 16 Nov 2026: resolve harus
+        // berhasil lewat salah satu jalur (fallback varian non-tcl +
+        // solver, atau mode terdegradasi ANDROID_VR).
+        final ResolvedAudio result = await resolver.resolve('k2XdBPv0D3Y');
+        expect(result.url, startsWith('https://'));
+        expect(result.itag, isIn(<int>[139, 140, 249, 250, 251]));
+      } finally {
+        await solver.dispose();
+      }
+    }, timeout: const Timeout(Duration(minutes: 5)));
 
     test('fetch config remote nyata dari GitHub Releases', () async {
       final RemoteConfigLoader loader = RemoteConfigLoader(

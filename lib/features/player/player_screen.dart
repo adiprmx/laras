@@ -3,6 +3,7 @@ import 'package:laras/core/theme/app_colors.dart';
 import 'package:laras/core/theme/app_theme.dart';
 import 'package:laras/core/widgets/album_cover.dart';
 import 'package:laras/data/database.dart';
+import 'package:laras/features/player/playback_error_banner.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/player/audio_player_port.dart';
 import 'package:laras/player/player_state.dart';
@@ -97,7 +98,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           children: <Widget>[
                             if (snap.status == PlayerStatus.error &&
                                 snap.lastError != null)
-                              _ErrorBanner(
+                              PlaybackErrorBanner(
                                 failure: snap.lastError!,
                                 onRetry: () => widget.port.play(),
                               ),
@@ -387,41 +388,6 @@ class _FavoriteHeart extends StatelessWidget {
           iconSize: 28,
         );
       },
-    );
-  }
-}
-
-class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({required this.failure, required this.onRetry});
-
-  final PlaybackFailure failure;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppLocalizations strings = AppLocalizations.of(context)!;
-    final ThemeData theme = Theme.of(context);
-    final String message = failure.kind == PlaybackFailureKind.network
-        ? strings.noInternet
-        : strings.songCannotPlay;
-    final String text = failure.skippedCount > 0
-        ? '$message ${strings.skippedUnplayable(failure.skippedCount)}'
-        : message;
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.all(Radius.circular(AppRadius.card)),
-      ),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: Text(text, style: theme.textTheme.bodyMedium),
-          ),
-          TextButton(onPressed: onRetry, child: Text(strings.retry)),
-        ],
-      ),
     );
   }
 }

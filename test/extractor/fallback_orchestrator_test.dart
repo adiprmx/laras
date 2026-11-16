@@ -73,6 +73,9 @@ class FakeConfigLoader extends RemoteConfigLoader {
 class FakeScriptLoader extends PlayerScriptLoader {
   FakeScriptLoader() : super(client: InnertubeClient());
 
+  /// Bila diisi, load() melempar error ini (simulasi gagal memuat script).
+  ExtractorException? errorToThrow;
+
   static final PlayerScript dummy = PlayerScript(
     jsUrl: '/s/player/palsu/base.js',
     hash: 'palsu',
@@ -94,7 +97,10 @@ class FakeScriptLoader extends PlayerScriptLoader {
   );
 
   @override
-  Future<PlayerScript> load({bool forceRefresh = false}) async => dummy;
+  Future<PlayerScript> load({bool forceRefresh = false}) async {
+    if (errorToThrow != null) throw errorToThrow!;
+    return dummy;
+  }
 }
 
 ParsedPlayerResponse okResponse({bool cipher = true, bool sabrOnly = false}) {
@@ -150,12 +156,13 @@ StreamResolver makeResolver({
   required FakeSolver solver,
   required List<ClientDefinition> clients,
   required SharedPreferences prefs,
+  PlayerScriptLoader? scriptLoader,
 }) {
   return StreamResolver(
     innertube: innertube,
     solver: solver,
     configLoader: FakeConfigLoader(config: configWith(clients), prefs: prefs),
-    scriptLoader: FakeScriptLoader(),
+    scriptLoader: scriptLoader ?? FakeScriptLoader(),
   );
 }
 
@@ -294,6 +301,33 @@ void main() {
       expect(innertube.playerCalls, <String>['WEB_REMIX']);
     });
 
+    test('ANDROID_VR cadangan kedua: URL langsung, solver tidak dipanggil (P0)', () async {
+      final FakeInnertube innertube = FakeInnertube(
+        responses: <String, Object>{
+          'WEB_REMIX': loginRequiredResponse,
+          'MWEB': loginRequiredResponse,
+          'ANDROID_VR': okResponse(cipher: false),
+        },
+      );
+      final FakeSolver solver = FakeSolver();
+      final StreamResolver resolver = makeResolver(
+        innertube: innertube,
+        solver: solver,
+        clients: const <ClientDefinition>[
+          kWebRemixClient,
+          kMwebClient,
+          kAndroidVrClient,
+        ],
+        prefs: prefs,
+      );
+      final ResolvedAudio result = await resolver.resolve('k2XdBPv0D3Y');
+      expect(result.clientName, 'ANDROID_VR');
+      expect(result.url, contains('langsung=1'));
+      // URL langsung: tidak ada cipher yang perlu dipecahkan.
+      expect(solver.solveCalls, 0);
+      expect(innertube.playerCalls.last, 'ANDROID_VR');
+    });
+
     test('waktu resolve diukur', () async {
       final FakeInnertube innertube = FakeInnertube(
         responses: <String, Object>{'WEB_REMIX': okResponse(cipher: false)},
@@ -306,6 +340,181 @@ void main() {
       );
       final ResolvedAudio result = await resolver.resolve('hhn-nGSuenM');
       expect(result.resolveDuration.inMilliseconds, greaterThanOrEqualTo(0));
+    });
+  });
+
+  group('StreamResolver rotasi client (P0)', () {
+    /// Kedua client gagal total: WEB_REMIX error jaringan (1 panggilan),
+    /// MWEB LOGIN_REQUIRED (2 panggilan: awal + sesudah refresh vd).
+    FakeInnertube failingInnertube() => FakeInnertube(
+      responses: <String, Object>{
+        'WEB_REMIX': const ExtractorException(
+          ResolveFailureCause.emptyResponse,
+          isNetworkError: true,
+        ),
+        'MWEB': loginRequiredResponse,
+      },
+    );
+
+    Future<ExtractorException?> resolveFails(
+      StreamResolver resolver,
+      String videoId,
+    ) async {
+      try {
+        await resolver.resolve(videoId);
+        return null;
+      } on ExtractorException catch (e) {
+        return e;
+      }
+    }
+
+    test('kegagalan total menggeser client awal ke berikutnya', () async {
+      final FakeInnertube innertube = failingInnertube();
+      final StreamResolver resolver = makeResolver(
+        innertube: innertube,
+        solver: FakeSolver(),
+        clients: const <ClientDefinition>[kWebRemixClient, kMwebClient],
+        prefs: prefs,
+      );
+      // Resolve 1: urutan default [W, M].
+      expect(await resolveFails(resolver, 'v1'), isNotNull);
+      expect(innertube.playerCalls, <String>['WEB_REMIX', 'MWEB', 'MWEB']);
+      // Resolve 2 (retry): mulai dari MWEB, bukan mengulang W dulu.
+      innertube.playerCalls.clear();
+      expect(await resolveFails(resolver, 'v1'), isNotNull);
+      expect(innertube.playerCalls, <String>['MWEB', 'MWEB', 'WEB_REMIX']);
+      // Resolve 3: kembali ke urutan default [W, M] (rotasi melingkar).
+      innertube.playerCalls.clear();
+      expect(await resolveFails(resolver, 'v1'), isNotNull);
+      expect(innertube.playerCalls, <String>['WEB_REMIX', 'MWEB', 'MWEB']);
+    });
+
+    test('sukses menghapus rotasi, resolve berikutnya urutan default', () async {
+      final FakeInnertube innertube = failingInnertube();
+      final StreamResolver resolver = makeResolver(
+        innertube: innertube,
+        solver: FakeSolver(),
+        clients: const <ClientDefinition>[kWebRemixClient, kMwebClient],
+        prefs: prefs,
+      );
+      expect(await resolveFails(resolver, 'v1'), isNotNull);
+      // MWEB kini OK: retry mulai dari MWEB dan langsung sukses.
+      innertube.responses['MWEB'] = okResponse(cipher: false);
+      innertube.playerCalls.clear();
+      final ResolvedAudio result = await resolver.resolve('v1');
+      expect(result.clientName, 'MWEB');
+      expect(innertube.playerCalls, <String>['MWEB']);
+      // Rotasi terhapus: resolve berikutnya mulai dari WEB_REMIX lagi.
+      innertube.responses['MWEB'] = loginRequiredResponse;
+      innertube.playerCalls.clear();
+      expect(await resolveFails(resolver, 'v1'), isNotNull);
+      expect(innertube.playerCalls.first, 'WEB_REMIX');
+    });
+
+    test('rotasi per lagu: lagu lain tidak ikut bergeser', () async {
+      final FakeInnertube innertube = failingInnertube();
+      final StreamResolver resolver = makeResolver(
+        innertube: innertube,
+        solver: FakeSolver(),
+        clients: const <ClientDefinition>[kWebRemixClient, kMwebClient],
+        prefs: prefs,
+      );
+      expect(await resolveFails(resolver, 'v1'), isNotNull);
+      // Lagu v2 belum pernah gagal: urutan default [W, M].
+      innertube.playerCalls.clear();
+      expect(await resolveFails(resolver, 'v2'), isNotNull);
+      expect(innertube.playerCalls, <String>['WEB_REMIX', 'MWEB', 'MWEB']);
+    });
+  });
+
+  group('StreamResolver mode terdegradasi (P0)', () {
+    FakeScriptLoader failingScriptLoader() => FakeScriptLoader()
+      ..errorToThrow = const ExtractorException(
+        ResolveFailureCause.unknownPlayerHash,
+        detail: 'ekstraksi base.js gagal',
+      );
+
+    test('script gagal + tanpa client bebas-script -> lempar error script, '
+        'tanpa request player', () async {
+      final FakeInnertube innertube = FakeInnertube(
+        responses: <String, Object>{'WEB_REMIX': okResponse(cipher: false)},
+      );
+      final StreamResolver resolver = makeResolver(
+        innertube: innertube,
+        solver: FakeSolver(),
+        clients: const <ClientDefinition>[kWebRemixClient, kMwebClient],
+        prefs: prefs,
+        scriptLoader: failingScriptLoader(),
+      );
+      ExtractorException? caught;
+      try {
+        await resolver.resolve('k2XdBPv0D3Y');
+        fail('resolve seharusnya melempar');
+      } on ExtractorException catch (e) {
+        caught = e;
+      }
+      expect(caught, isNotNull);
+      expect(caught.cause, ResolveFailureCause.unknownPlayerHash);
+      // Tanpa sts, request player client web DIJAMIN UNPLAYABLE: tidak
+      // ada satu pun request player yang dibuang.
+      expect(innertube.playerCalls, isEmpty);
+    });
+
+    test('script gagal + ANDROID_VR tersedia -> VR dicoba dan berhasil', () async {
+      final FakeInnertube innertube = FakeInnertube(
+        responses: <String, Object>{
+          'WEB_REMIX': okResponse(cipher: false),
+          'MWEB': okResponse(cipher: false),
+          'ANDROID_VR': okResponse(cipher: false),
+        },
+      );
+      final FakeSolver solver = FakeSolver();
+      final StreamResolver resolver = makeResolver(
+        innertube: innertube,
+        solver: solver,
+        clients: const <ClientDefinition>[
+          kWebRemixClient,
+          kMwebClient,
+          kAndroidVrClient,
+        ],
+        prefs: prefs,
+        scriptLoader: failingScriptLoader(),
+      );
+      // Skenario insiden P0: ekstraksi base.js gagal total, tapi lagu
+      // tetap bisa diputar lewat VR (URL langsung, tanpa sts).
+      final ResolvedAudio result = await resolver.resolve('k2XdBPv0D3Y');
+      expect(result.clientName, 'ANDROID_VR');
+      expect(innertube.playerCalls, <String>['ANDROID_VR']);
+      expect(solver.solveCalls, 0);
+    });
+
+    test('script gagal + VR ikut gagal -> lempar error VR', () async {
+      final FakeInnertube innertube = FakeInnertube(
+        responses: <String, Object>{'ANDROID_VR': loginRequiredResponse},
+      );
+      final StreamResolver resolver = makeResolver(
+        innertube: innertube,
+        solver: FakeSolver(),
+        clients: const <ClientDefinition>[
+          kWebRemixClient,
+          kMwebClient,
+          kAndroidVrClient,
+        ],
+        prefs: prefs,
+        scriptLoader: failingScriptLoader(),
+      );
+      ExtractorException? caught;
+      try {
+        await resolver.resolve('k2XdBPv0D3Y');
+        fail('resolve seharusnya melempar');
+      } on ExtractorException catch (e) {
+        caught = e;
+      }
+      expect(caught, isNotNull);
+      expect(caught.cause, ResolveFailureCause.httpForbidden);
+      // Hanya VR yang dicoba (2x karena retry LOGIN_REQUIRED); client
+      // web dilewati.
+      expect(innertube.playerCalls, <String>['ANDROID_VR', 'ANDROID_VR']);
     });
   });
 }

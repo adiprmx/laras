@@ -75,9 +75,8 @@ class Songs extends Table {
 
   DateTimeColumn get downloadedAt => dateTime().nullable()();
 
-  TextColumn get formatId => text()
-      .nullable()
-      .references(Formats, #id, onDelete: KeyAction.setNull)();
+  TextColumn get formatId =>
+      text().nullable().references(Formats, #id, onDelete: KeyAction.setNull)();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -109,7 +108,10 @@ class Albums extends Table {
 /// dari antrean hanya membawa nama artis, tanpa channelId; untuk kasus itu
 /// service memakai id semu `local-<hash nama>` (lihat
 /// `localArtistIdForName` di library_service.dart). P4 menggabungkan id
-/// semu ke channelId asli saat data YTM tersedia.
+/// semu ke channelId asli saat data YTM tersedia
+/// (`LibraryService.mergeArtistChannel`), dan lagu yang diputar dari
+/// hasil pencarian/browse langsung memakai channelId
+/// (`Track.artistChannelId`).
 @TableIndex(name: 'artists_name_idx', columns: {#name})
 class Artists extends Table {
   TextColumn get id => text()();

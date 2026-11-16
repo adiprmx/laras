@@ -15,6 +15,7 @@ export 'audio_handler.dart';
 export 'audio_player_port.dart';
 export 'audio_session_port.dart';
 export 'just_audio_player.dart';
+export 'playback_failure_messages.dart';
 export 'player_engine.dart';
 export 'player_scope.dart';
 export 'player_service.dart';

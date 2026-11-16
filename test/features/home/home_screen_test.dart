@@ -8,14 +8,40 @@ import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:laras/data/database.dart';
+import 'package:laras/extractor/extractor.dart';
 import 'package:laras/features/home/home_screen.dart';
 import 'package:laras/features/library/song_row.dart';
+import 'package:laras/features/search/search_service.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/main.dart';
 import 'package:laras/player/player.dart';
 
 import '../../data/test_database.dart';
 import '../../player/fakes.dart';
+import '../search/fake_online_api.dart';
+
+const BrowsePage homeExplorePage = BrowsePage(
+  title: '',
+  shelves: <BrowseShelf>[
+    BrowseShelf(
+      title: "Today's biggest hits",
+      items: <BrowseItem>[
+        BrowseItem(
+          kind: BrowseItemKind.playlist,
+          title: 'Hit Hari Ini',
+          subtitle: 'Playlist • YouTube Music',
+          browseId: 'VLRDtest1',
+        ),
+        BrowseItem(
+          kind: BrowseItemKind.playlist,
+          title: 'Top 50 Indonesia',
+          subtitle: 'Playlist • YouTube Music',
+          browseId: 'VLRDtest2',
+        ),
+      ],
+    ),
+  ],
+);
 
 void main() {
   late FakeAudioPlayerPort port;
@@ -45,9 +71,14 @@ void main() {
   Future<void> pumpHome(
     WidgetTester tester, {
     LibraryService? libraryService,
+    SearchService? searchService,
   }) async {
     await tester.pumpWidget(
-      LarasApp(playerService: playerService, libraryService: libraryService),
+      LarasApp(
+        playerService: playerService,
+        libraryService: libraryService,
+        searchService: searchService,
+      ),
     );
     await tester.pumpAndSettle();
   }
@@ -143,7 +174,11 @@ void main() {
     final TestGesture gesture = await tester.startGesture(
       tester.getCenter(button),
     );
-    await tester.pump();
+    // onTapDown tertunda kPressTimeout (100 ms) karena tombol berada di
+    // dalam scrollable yang bersaing di arena gesture (efek
+    // AlwaysScrollableScrollPhysics untuk pull-to-refresh): pump 150 ms
+    // supaya status tekan terdaftar.
+    await tester.pump(const Duration(milliseconds: 150));
     expect(tester.widget<AnimatedScale>(scale).scale, lessThan(1.0));
 
     await gesture.up();
@@ -191,5 +226,256 @@ void main() {
       tester.element(find.byType(Scaffold).first),
     )!;
     expect(find.text(strings.homeLibraryTitle), findsNothing);
+  });
+
+  testWidgets('seksi Baru diputar muncul dari riwayat putar', (
+    WidgetTester tester,
+  ) async {
+    final (LarasDatabase db, LibraryService library) = createTestLibrary();
+    addTearDown(db.close);
+    await library.upsertSong(
+      testSong('lib1', title: 'Lagu Diputar A'),
+      addToLibrary: true,
+    );
+    await library.upsertSong(
+      testSong('lib2', title: 'Lagu Diputar B'),
+      addToLibrary: true,
+    );
+    await library.recordPlay(
+      songId: 'lib1',
+      timestamp: DateTime(2026, 11, 16, 10, 0, 1),
+      playTimeMs: 60000,
+    );
+    await library.recordPlay(
+      songId: 'lib2',
+      timestamp: DateTime(2026, 11, 16, 10, 0, 2),
+      playTimeMs: 60000,
+    );
+
+    setPhoneViewport(tester);
+    await pumpHome(tester, libraryService: library);
+
+    final AppLocalizations strings = AppLocalizations.of(
+      tester.element(find.byType(Scaffold).first),
+    )!;
+    expect(find.text(strings.sectionRecent), findsOneWidget);
+    // Tiap lagu tampil di dua seksi (Baru Ditambahkan + Baru diputar).
+    expect(find.text('Lagu Diputar A'), findsNWidgets(2));
+    expect(find.text('Lagu Diputar B'), findsNWidgets(2));
+  });
+
+  testWidgets('seksi Favorit muncul bila ada lagu yang ditandai hati', (
+    WidgetTester tester,
+  ) async {
+    final (LarasDatabase db, LibraryService library) = createTestLibrary();
+    addTearDown(db.close);
+    await library.upsertSong(
+      testSong('lib1', title: 'Lagu Favorit'),
+      addToLibrary: true,
+    );
+    await library.upsertSong(
+      testSong('lib2', title: 'Lagu Biasa'),
+      addToLibrary: true,
+    );
+    await library.toggleLiked('lib1');
+
+    setPhoneViewport(tester);
+    await pumpHome(tester, libraryService: library);
+
+    final AppLocalizations strings = AppLocalizations.of(
+      tester.element(find.byType(Scaffold).first),
+    )!;
+    expect(find.text(strings.favorites), findsOneWidget);
+    // 'Lagu Favorit' tampil di dua seksi (Baru Ditambahkan + Favorit),
+    // 'Lagu Biasa' hanya di Baru Ditambahkan.
+    expect(find.text('Lagu Favorit'), findsNWidgets(2));
+    expect(find.text('Lagu Biasa'), findsOneWidget);
+  });
+
+  testWidgets('seksi Playlist kamu muncul dan bisa dibuka', (
+    WidgetTester tester,
+  ) async {
+    final (LarasDatabase db, LibraryService library) = createTestLibrary();
+    addTearDown(db.close);
+    await library.createPlaylist('Playlist Santai');
+    await library.upsertSong(
+      testSong('lib1', title: 'Lagu Di Playlist'),
+      addToLibrary: true,
+    );
+
+    setPhoneViewport(tester);
+    await pumpHome(tester, libraryService: library);
+
+    final AppLocalizations strings = AppLocalizations.of(
+      tester.element(find.byType(Scaffold).first),
+    )!;
+    expect(find.text(strings.sectionYourPlaylists), findsOneWidget);
+    expect(find.text('Playlist Santai'), findsOneWidget);
+    await tester.ensureVisible(find.text('Playlist Santai'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Playlist Santai'));
+    await tester.pumpAndSettle();
+    // Layar detail playlist terbuka (judul playlist di AppBar).
+    expect(find.text('Playlist Santai'), findsWidgets);
+  });
+
+  testWidgets('seksi Jelajah menampilkan rak dari internet', (
+    WidgetTester tester,
+  ) async {
+    final (LarasDatabase db, LibraryService library) = createTestLibrary();
+    addTearDown(db.close);
+    final FakeOnlineApi api = FakeOnlineApi(browsePage: homeExplorePage);
+    final SearchService searchService = SearchService(
+      api: api,
+      library: library,
+    );
+
+    setPhoneViewport(tester);
+    await pumpHome(
+      tester,
+      libraryService: library,
+      searchService: searchService,
+    );
+
+    final AppLocalizations strings = AppLocalizations.of(
+      tester.element(find.byType(Scaffold).first),
+    )!;
+    expect(find.text(strings.sectionExplore), findsOneWidget);
+    expect(find.text("Today's biggest hits"), findsOneWidget);
+    expect(find.text('Hit Hari Ini'), findsOneWidget);
+    expect(find.text(strings.moodsAndGenres), findsOneWidget);
+    expect(api.browseCalls, 1);
+  });
+
+  testWidgets('Jelajah gagal jaringan: pesan tanpa tombol coba lagi', (
+    WidgetTester tester,
+  ) async {
+    final (LarasDatabase db, LibraryService library) = createTestLibrary();
+    addTearDown(db.close);
+    final FakeOnlineApi api = FakeOnlineApi(browseError: networkError);
+    final SearchService searchService = SearchService(
+      api: api,
+      library: library,
+    );
+
+    setPhoneViewport(tester);
+    await pumpHome(
+      tester,
+      libraryService: library,
+      searchService: searchService,
+    );
+
+    final AppLocalizations strings = AppLocalizations.of(
+      tester.element(find.byType(Scaffold).first),
+    )!;
+    expect(find.text(strings.sectionExplore), findsOneWidget);
+    expect(find.text(strings.exploreNeedsInternet), findsOneWidget);
+    // PRD B6.3: saat offline tidak ada tombol "Coba lagi".
+    expect(find.text(strings.retry), findsNothing);
+  });
+
+  testWidgets('Jelajah gagal server: pesan + coba lagi berhasil', (
+    WidgetTester tester,
+  ) async {
+    final (LarasDatabase db, LibraryService library) = createTestLibrary();
+    addTearDown(db.close);
+    final FakeOnlineApi api = FakeOnlineApi(
+      browsePage: homeExplorePage,
+      browseError: const ExtractorException(
+        ResolveFailureCause.emptyResponse,
+        detail: 'server kosong (tes)',
+      ),
+    );
+    final SearchService searchService = SearchService(
+      api: api,
+      library: library,
+    );
+
+    setPhoneViewport(tester);
+    await pumpHome(
+      tester,
+      libraryService: library,
+      searchService: searchService,
+    );
+
+    final AppLocalizations strings = AppLocalizations.of(
+      tester.element(find.byType(Scaffold).first),
+    )!;
+    expect(find.text(strings.exploreFailedHttp), findsOneWidget);
+    expect(find.text(strings.retry), findsOneWidget);
+    api.browseError = null;
+    await tester.tap(find.text(strings.retry));
+    await tester.pumpAndSettle();
+    expect(find.text('Hit Hari Ini'), findsOneWidget);
+  });
+
+  testWidgets('seksi Jelajah sembunyi bila tidak ada layanan pencarian', (
+    WidgetTester tester,
+  ) async {
+    final (LarasDatabase db, LibraryService library) = createTestLibrary();
+    addTearDown(db.close);
+
+    setPhoneViewport(tester);
+    await pumpHome(tester, libraryService: library);
+
+    final AppLocalizations strings = AppLocalizations.of(
+      tester.element(find.byType(Scaffold).first),
+    )!;
+    expect(find.text(strings.sectionExplore), findsNothing);
+  });
+
+  testWidgets('banner error tampil bila lagu pilihan gagal diputar (P0)', (
+    WidgetTester tester,
+  ) async {
+    setPhoneViewport(tester);
+    port.emitSnapshot(
+      PlayerSnapshot(
+        currentTrack: homeTracks.first,
+        queue: homeTracks,
+        currentIndex: 0,
+        status: PlayerStatus.error,
+        lastError: const PlaybackFailure(
+          kind: PlaybackFailureKind.network,
+          trackTitle: 'Lagu Pilihan',
+        ),
+      ),
+    );
+    await pumpHome(tester);
+    // Pesan lengkap banner (mini-player hanya menampilkan versi singkat).
+    expect(
+      find.text('Tidak ada internet. Periksa koneksi, lalu coba lagi.'),
+      findsOneWidget,
+    );
+    // Tombol coba lagi banner memanggil port.play().
+    await tester.tap(find.text('Coba lagi'));
+    expect(port.playCalls, 1);
+  });
+
+  testWidgets('banner error sembunyi bila lagu yang gagal bukan lagu pilihan',
+      (WidgetTester tester) async {
+    setPhoneViewport(tester);
+    port.emitSnapshot(
+      PlayerSnapshot(
+        currentTrack: const Track(
+          videoId: 'bukan-kanari',
+          title: 'Lagu Lain',
+        ),
+        queue: const <Track>[
+          Track(videoId: 'bukan-kanari', title: 'Lagu Lain'),
+        ],
+        currentIndex: 0,
+        status: PlayerStatus.error,
+        lastError: const PlaybackFailure(
+          kind: PlaybackFailureKind.network,
+          trackTitle: 'Lagu Lain',
+        ),
+      ),
+    );
+    await pumpHome(tester);
+    expect(
+      find.text('Tidak ada internet. Periksa koneksi, lalu coba lagi.'),
+      findsNothing,
+    );
+    expect(find.text('Coba lagi'), findsNothing);
   });
 }

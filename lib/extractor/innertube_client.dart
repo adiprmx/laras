@@ -4,7 +4,11 @@
 /// `music.youtube.com` stall total dari VM dan tidak pernah dipakai.
 ///
 /// Timeout eksplisit di semua request (arsitektur 5.6): connect 10 detik,
-/// receive 15 detik. Retry 3x dengan backoff 1 detik lalu 2 detik (+jitter)
+/// receive 30 detik. Angka receive dinaikkan dari 15 ke 30 detik di P0
+/// dengan bukti probe 16 Nov 2026: tiga request player yang sah dari VM
+/// memakan 16,2 / 22,2 / 26,5 detik (egress lambat) - semuanya akan mati
+/// dibunuh timeout 15 detik. Jaringan HP yang lambat tapi hidup punya
+/// risiko yang sama. Retry 3x dengan backoff 1 detik lalu 2 detik (+jitter)
 /// HANYA untuk HTTP 429/503 dan error jaringan; error lain (termasuk
 /// respons LOGIN_REQUIRED dari server) bukan alasan retry transport.
 ///
@@ -27,15 +31,27 @@ import 'client_definitions.dart';
 import 'errors.dart';
 import 'models.dart';
 import 'player_parser.dart';
+import 'search_parser.dart';
 
 /// Hasil search: visitorData segar + daftar lagu.
+///
+/// [grouped] membawa pengelompokan penuh (lagu, album, artis, playlist);
+/// [songs] adalah jalan pintas ke [GroupedSearchResults.songs] untuk
+/// pemakaian lama (refresh visitorData, kanari).
 class SearchResult {
-  const SearchResult({required this.visitorData, required this.songs});
+  const SearchResult({
+    required this.visitorData,
+    required this.songs,
+    this.grouped = const GroupedSearchResults(),
+  });
 
   /// visitorData dari `responseContext`, atau null bila server tidak
   /// memberikannya.
   final String? visitorData;
   final List<SearchSong> songs;
+
+  /// Hasil yang sudah dikelompokkan + parameter filter chip.
+  final GroupedSearchResults grouped;
 }
 
 /// Client HTTP InnerTube (player + search).
@@ -47,7 +63,7 @@ class InnertubeClient {
             BaseOptions(
               baseUrl: 'https://$kInnertubeHost',
               connectTimeout: const Duration(seconds: 10),
-              receiveTimeout: const Duration(seconds: 15),
+              receiveTimeout: const Duration(seconds: 30),
               sendTimeout: const Duration(seconds: 10),
               contentType: 'application/json',
               responseType: ResponseType.json,
@@ -100,24 +116,112 @@ class InnertubeClient {
   }
 
   /// Request search YouTube Music.
-  Future<SearchResult> search(String query, ClientDefinition client) async {
+  ///
+  /// [params] adalah parameter filter dari chip respons sebelumnya
+  /// (mis. hanya lagu); null berarti pencarian tanpa filter.
+  /// Parser terstruktur dipakai dulu; bila tidak menemukan satu pun
+  /// lagu, kolektor toleran lama dipakai sebagai cadangan (bentuk
+  /// respons berubah tidak langsung mengosongkan hasil).
+  Future<SearchResult> search(
+    String query,
+    ClientDefinition client, {
+    String? params,
+  }) async {
+    final Map<String, dynamic> body = <String, dynamic>{
+      'context': <String, dynamic>{
+        'client': client.contextWithVisitorData(_visitorData),
+      },
+      'query': query,
+    };
+    if (params != null && params.isNotEmpty) {
+      body['params'] = params;
+    }
     final Map<String, dynamic> json = await _postJson(
       '/youtubei/v1/search',
+      body,
+      client,
+    );
+    // Respons search yang valid selalu membawa `contents` — walau
+    // hasilnya kosong. Tanpa itu, server menolak (mis. LOGIN_REQUIRED)
+    // dan client berikut patut dicoba; diam-diam kosong akan menipu
+    // pengguna seolah tidak ada hasil.
+    if (json['contents'] == null) {
+      throw const ExtractorException(
+        ResolveFailureCause.parseFailed,
+        detail: 'respons search tanpa contents',
+      );
+    }
+    final Map<String, dynamic>? responseContext =
+        json['responseContext'] as Map<String, dynamic>?;
+    final String? visitorData = responseContext?['visitorData'] as String?;
+    if (visitorData != null && visitorData.isNotEmpty) {
+      _visitorData = visitorData;
+      _visitorDataFetchedAt = DateTime.now();
+    }
+    final GroupedSearchResults grouped = parseGroupedSearchResults(json);
+    final List<SearchSong> songs = grouped.songs.isNotEmpty
+        ? grouped.songs
+        : parseSearchResponse(json);
+    return SearchResult(
+      visitorData: visitorData,
+      songs: songs,
+      grouped: grouped,
+    );
+  }
+
+  /// Request browse YouTube Music: beranda (FEmusic_home), halaman
+  /// artis/album/playlist (browseId), atau kategori mood/genre
+  /// (browseId + [params]).
+  Future<BrowsePage> browse(
+    String browseId,
+    ClientDefinition client, {
+    String? params,
+  }) async {
+    final Map<String, dynamic> body = <String, dynamic>{
+      'context': <String, dynamic>{
+        'client': client.contextWithVisitorData(_visitorData),
+      },
+      'browseId': browseId,
+    };
+    if (params != null && params.isNotEmpty) {
+      body['params'] = params;
+    }
+    final Map<String, dynamic> json = await _postJson(
+      '/youtubei/v1/browse',
+      body,
+      client,
+    );
+    if (json['contents'] == null) {
+      throw const ExtractorException(
+        ResolveFailureCause.parseFailed,
+        detail: 'respons browse tanpa contents',
+      );
+    }
+    return parseBrowsePage(json);
+  }
+
+  /// Request saran pencarian (`music/get_search_suggestions`).
+  ///
+  /// Mengembalikan daftar teks saran (paling banyak 8, sesuai PRD
+  /// B1.2). Kegagalan apa pun melempar [ExtractorException] dan
+  /// ditangani pemanggil dengan diam (saran hilang, pencarian penuh
+  /// tetap jalan).
+  Future<List<String>> fetchSuggestions(
+    String input,
+    ClientDefinition client,
+  ) async {
+    final Map<String, dynamic> json = await _postJson(
+      '/youtubei/v1/music/get_search_suggestions',
       <String, dynamic>{
         'context': <String, dynamic>{
           'client': client.contextWithVisitorData(_visitorData),
         },
-        'query': query,
+        'input': input,
       },
       client,
     );
-    final Map<String, dynamic>? responseContext =
-        json['responseContext'] as Map<String, dynamic>?;
-    final String? visitorData = responseContext?['visitorData'] as String?;
-    return SearchResult(
-      visitorData: visitorData,
-      songs: parseSearchResponse(json),
-    );
+    final List<String> suggestions = parseSearchSuggestions(json);
+    return suggestions.take(8).toList(growable: false);
   }
 
   /// Request player untuk satu videoId.
@@ -131,16 +235,15 @@ class InnertubeClient {
     String? visitorData,
   }) async {
     final String? vd = visitorData ?? _visitorData;
-    final Map<String, dynamic> playbackContext =
-        <String, dynamic>{
-          'vis': 0,
-          'splay': false,
-          'autoCaptionsDefaultOn': false,
-          'autonavState': 'STATE_OFF',
-          'html5Preference': 'HTML5_PREF_WANTS',
-          'lact': <dynamic>[],
-          'signatureTimestamp': ?signatureTimestamp,
-        };
+    final Map<String, dynamic> playbackContext = <String, dynamic>{
+      'vis': 0,
+      'splay': false,
+      'autoCaptionsDefaultOn': false,
+      'autonavState': 'STATE_OFF',
+      'html5Preference': 'HTML5_PREF_WANTS',
+      'lact': <dynamic>[],
+      'signatureTimestamp': ?signatureTimestamp,
+    };
     final Map<String, dynamic> json = await _postJson(
       '/youtubei/v1/player',
       <String, dynamic>{
@@ -257,8 +360,7 @@ class InnertubeClient {
         final bool retryable = _isRetryable(e);
         if (!retryable || attempt == maxAttempts - 1) break;
         final Duration delay =
-            backoff[attempt] +
-            Duration(milliseconds: random.nextInt(500));
+            backoff[attempt] + Duration(milliseconds: random.nextInt(500));
         await Future<void>.delayed(delay);
       }
     }
@@ -287,15 +389,17 @@ class InnertubeClient {
         detail: 'HTTP 403 dari server',
       );
     }
-    final bool network =
+    final bool timeout =
         e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.sendTimeout ||
-        e.type == DioExceptionType.receiveTimeout ||
-        e.type == DioExceptionType.connectionError;
+        e.type == DioExceptionType.receiveTimeout;
+    final bool network =
+        timeout || e.type == DioExceptionType.connectionError;
     return ExtractorException(
       ResolveFailureCause.emptyResponse,
       clientName: clientName,
       isNetworkError: network,
+      isTimeout: timeout,
       detail:
           'request gagal: ${e.type}'
           '${status != null ? ' HTTP $status' : ''}',

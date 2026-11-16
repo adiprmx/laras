@@ -2,6 +2,7 @@ import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:laras/features/player/mini_player.dart';
+import 'package:laras/player/player.dart';
 
 import 'widget_helpers.dart';
 
@@ -176,6 +177,76 @@ void main() {
       );
       expect(find.byIcon(Icons.favorite), findsNothing);
       expect(find.byIcon(Icons.favorite_border), findsNothing);
+    });
+  });
+
+  group('MiniPlayer state error (P0)', () {
+    Future<void> pumpError(
+      WidgetTester tester,
+      PlaybackFailureKind kind, {
+      VoidCallback? onPlayPause,
+    }) async {
+      await pumpLarasWidget(
+        tester,
+        MiniPlayer(
+          title: 'Lagu Uji',
+          artist: 'Artis Uji',
+          isPlaying: false,
+          failure: PlaybackFailure(kind: kind, trackTitle: 'Lagu Uji'),
+          onTap: () {},
+          onPlayPause: onPlayPause ?? () {},
+          onNext: () {},
+          onPrevious: () {},
+        ),
+      );
+    }
+
+    testWidgets('jaringan: pesan singkat menggantikan artis + tombol segar',
+        (WidgetTester tester) async {
+      await pumpError(tester, PlaybackFailureKind.network);
+      expect(find.text('Lagu Uji'), findsOneWidget);
+      expect(find.text('Tidak ada internet'), findsOneWidget);
+      // Baris artis diganti pesan error: tidak ada ruang untuk keduanya.
+      expect(find.text('Artis Uji'), findsNothing);
+      expect(find.byIcon(Icons.refresh), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow), findsNothing);
+      expect(find.byTooltip('Coba lagi'), findsOneWidget);
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+    });
+
+    testWidgets('timeout: pesan "Internet lambat"',
+        (WidgetTester tester) async {
+      await pumpError(tester, PlaybackFailureKind.timeout);
+      expect(find.text('Internet lambat'), findsOneWidget);
+      expect(find.byIcon(Icons.refresh), findsOneWidget);
+    });
+
+    testWidgets('tidak bisa diputar: pesan "Tidak bisa diputar"',
+        (WidgetTester tester) async {
+      await pumpError(tester, PlaybackFailureKind.unplayable);
+      expect(find.text('Tidak bisa diputar'), findsOneWidget);
+      expect(find.byIcon(Icons.refresh), findsOneWidget);
+    });
+
+    testWidgets('mengetuk tombol segar memanggil onPlayPause (retry)',
+        (WidgetTester tester) async {
+      bool retried = false;
+      await pumpError(
+        tester,
+        PlaybackFailureKind.network,
+        onPlayPause: () => retried = true,
+      );
+      await tester.tap(find.byIcon(Icons.refresh));
+      expect(retried, isTrue);
+    });
+
+    testWidgets('tinggi tetap 64 dp dalam state error',
+        (WidgetTester tester) async {
+      await pumpError(tester, PlaybackFailureKind.network);
+      expect(
+        tester.getSize(find.byKey(const Key('mini-player'))).height,
+        64,
+      );
     });
   });
 }

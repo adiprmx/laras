@@ -13,6 +13,12 @@
 /// 1. WEB_REMIX - satu-satunya client web yang memberi format audio
 ///    konvensional (cipher) dengan versi live dari HTML.
 /// 2. MWEB - cadangan, juga memberi format audio konvensional (cipher).
+/// 3. ANDROID_VR - cadangan kedua (P0, 16 Nov 2026): memberi URL audio
+///    LANGSUNG (tanpa cipher, tanpa perlu solver) untuk itag 139/140/
+///    249/251; terbukti 206 + byte audio nyata dari VM. P1 sempat
+///    mengecualikannya karena LOGIN_REQUIRED, tapi probe ulang P0 dengan
+///    sts + visitorData segar lolos. Dipakai hanya bila kedua client web
+///    gagal.
 ///
 /// Client yang TIDAK masuk fallback dan alasannya (terbukti di probe):
 /// - ANDROID_MUSIC / IOS_MUSIC: LOGIN_REQUIRED ("Please sign in") untuk
@@ -23,7 +29,6 @@
 /// - WEB: LOGIN_REQUIRED ("Sign in to confirm you're not a bot").
 /// - WEB_EMBEDDED_PLAYER: ERROR ("This video is unavailable").
 /// - TVHTML5_SIMPLY_EMBEDDED_PLAYER: ERROR ("no longer supported").
-/// - ANDROID_VR 1.65.10: LOGIN_REQUIRED (bot).
 library;
 
 /// Satu client InnerTube: nama, versi, konteks JSON, user agent, dan ID
@@ -35,6 +40,7 @@ class ClientDefinition {
     required this.context,
     required this.userAgent,
     required this.clientId,
+    this.requiresScript = true,
   });
 
   /// Nama client di `context.client.clientName`, mis. `WEB_REMIX`.
@@ -52,6 +58,13 @@ class ClientDefinition {
 
   /// Nilai header `X-YouTube-Client-Name`.
   final String clientId;
+
+  /// Benar bila client ini butuh script player (sts untuk request player
+  /// dan/atau solver untuk format cipher). Client yang memberi URL
+  /// langsung tanpa sts (saat ini hanya ANDROID_VR, terbukti probe P0f)
+  /// memakai false: orkestrator tetap mencobanya saat script gagal
+  /// dimuat (mode terdegradasi).
+  final bool requiresScript;
 
   Map<String, dynamic> contextWithVisitorData(String? visitorData) {
     if (visitorData == null || visitorData.isEmpty) return context;
@@ -109,9 +122,34 @@ const ClientDefinition kMwebClient = ClientDefinition(
   clientId: '2',
 );
 
-/// Urutan fallback bawaan: WEB_REMIX dulu, MWEB sebagai cadangan.
+/// Definisi ANDROID_VR (cadangan kedua, P0 16 Nov 2026).
+///
+/// Versi 1.65.10. Context menyertakan `androidSdkVersion: 34` seperti di
+/// probe yang lolos. Probe P0f 16 Nov 2026 membuktikan VR juga lolos
+/// TANPA androidSdkVersion (bentuk context config remote) dan TANPA
+/// signatureTimestamp - jadi VR tetap bisa dicoba saat script player
+/// gagal dimuat (mode terdegradasi orkestrator).
+/// Memberi URL audio langsung (tanpa cipher) - satu-satunya client yang
+/// tidak butuh solver signature.
+const ClientDefinition kAndroidVrClient = ClientDefinition(
+  name: 'ANDROID_VR',
+  version: '1.65.10',
+  context: <String, dynamic>{
+    'clientName': 'ANDROID_VR',
+    'clientVersion': '1.65.10',
+    'androidSdkVersion': 34,
+  },
+  userAgent:
+      'com.google.android.youtube/21.26.364 (Linux; U; Android 14; '
+      'Pixel 8) gzip',
+  clientId: '14',
+  requiresScript: false,
+);
+
+/// Urutan fallback bawaan: WEB_REMIX dulu, MWEB cadangan, ANDROID_VR
+/// cadangan kedua (URL langsung, tanpa solver).
 const List<ClientDefinition> kDefaultClientFallbackOrder =
-    <ClientDefinition>[kWebRemixClient, kMwebClient];
+    <ClientDefinition>[kWebRemixClient, kMwebClient, kAndroidVrClient];
 
 /// Satu lagu kanari: videoId terverifikasi + judul yang tampil di demo.
 ///

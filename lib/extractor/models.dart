@@ -174,12 +174,19 @@ class ResolveLogEntry {
 }
 
 /// Satu hasil pencarian lagu dari YouTube Music.
+///
+/// [artistChannelId] dan [albumBrowseId] diisi bila respons membawa
+/// tautan artis/album (P4): dipakai untuk menggabungkan artis pseudo-id
+/// lokal ke channelId asli dan mencatat album lagu (lihat
+/// `LibraryService.mergeArtistChannel`).
 class SearchSong {
   const SearchSong({
     required this.videoId,
     required this.title,
     this.artist,
+    this.artistChannelId,
     this.album,
+    this.albumBrowseId,
     this.durationSeconds,
     this.thumbnailUrl,
   });
@@ -187,7 +194,216 @@ class SearchSong {
   final String videoId;
   final String title;
   final String? artist;
+
+  /// channelId YouTube Music artis utama, bila respons membawanya.
+  final String? artistChannelId;
   final String? album;
+
+  /// browseId album (awalan `MPRE`), bila respons membawanya.
+  final String? albumBrowseId;
   final int? durationSeconds;
   final String? thumbnailUrl;
+}
+
+/// Satu hasil pencarian album dari YouTube Music.
+class SearchAlbum {
+  const SearchAlbum({
+    required this.browseId,
+    required this.title,
+    this.artists = const <String>[],
+    this.year,
+    this.thumbnailUrl,
+  });
+
+  /// browseId album (awalan `MPRE`).
+  final String browseId;
+  final String title;
+  final List<String> artists;
+  final int? year;
+  final String? thumbnailUrl;
+}
+
+/// Satu hasil pencarian artis dari YouTube Music.
+class SearchArtist {
+  const SearchArtist({
+    required this.channelId,
+    required this.name,
+    this.thumbnailUrl,
+    this.subscribersText,
+  });
+
+  /// channelId artis (awalan `UC`).
+  final String channelId;
+  final String name;
+  final String? thumbnailUrl;
+
+  /// Teks jumlah pendengar/pengikut apa adanya dari respons
+  /// (mis. "33.5M monthly audience"), atau null bila tidak ada.
+  final String? subscribersText;
+}
+
+/// Satu hasil pencarian playlist dari YouTube Music.
+class SearchPlaylist {
+  const SearchPlaylist({
+    required this.browseId,
+    required this.title,
+    this.subtitle,
+    this.thumbnailUrl,
+  });
+
+  /// browseId playlist (awalan `VLPL`, `VLRD`, atau `PL`).
+  final String browseId;
+  final String title;
+
+  /// Keterangan apa adanya dari respons (pembuat, jumlah lagu).
+  final String? subtitle;
+  final String? thumbnailUrl;
+}
+
+/// Hasil pencarian yang sudah dikelompokkan.
+///
+/// Kelompok yang gagal di-parse tidak mengosongkan kelompok lain:
+/// parser mengisi kelompok yang berhasil dan membiarkan sisanya kosong
+/// (PRD B1.1).
+class GroupedSearchResults {
+  const GroupedSearchResults({
+    this.songs = const <SearchSong>[],
+    this.albums = const <SearchAlbum>[],
+    this.artists = const <SearchArtist>[],
+    this.playlists = const <SearchPlaylist>[],
+    this.filterParams = const <String, String>{},
+  });
+
+  /// Lagu dan video musik (keduanya bisa diputar lewat videoId).
+  final List<SearchSong> songs;
+  final List<SearchAlbum> albums;
+  final List<SearchArtist> artists;
+  final List<SearchPlaylist> playlists;
+
+  /// Parameter filter pencarian per kelompok, dibaca dari chip respons
+  /// (kunci: `songs`, `albums`, `artists`, `playlists`). Dipakai layar
+  /// "Lihat semua" untuk meminta daftar penuh satu kelompok. Kosong
+  /// bila respons tidak membawa chip.
+  final Map<String, String> filterParams;
+
+  bool get isEmpty =>
+      songs.isEmpty && albums.isEmpty && artists.isEmpty && playlists.isEmpty;
+}
+
+/// Jenis item di satu rak halaman browse.
+enum BrowseItemKind {
+  /// Lagu/video yang bisa diputar (membawa videoId).
+  song,
+
+  /// Album (membawa browseId `MPRE...`).
+  album,
+
+  /// Artis (membawa browseId channelId).
+  artist,
+
+  /// Playlist (membawa browseId `VL...`/`PL...`).
+  playlist,
+
+  /// Kategori mood/genre (membawa browseId + params).
+  category,
+}
+
+/// Satu kartu/baris di halaman browse (beranda Jelajah, halaman artis,
+/// album, playlist, mood).
+class BrowseItem {
+  const BrowseItem({
+    required this.kind,
+    required this.title,
+    this.subtitle,
+    this.videoId,
+    this.browseId,
+    this.browseParams,
+    this.thumbnailUrl,
+    this.durationSeconds,
+    this.artist,
+    this.artistChannelId,
+    this.album,
+    this.albumBrowseId,
+  });
+
+  final BrowseItemKind kind;
+  final String title;
+
+  /// Keterangan di bawah judul (artis, jumlah lagu, tahun).
+  final String? subtitle;
+
+  /// videoId bila [kind] adalah [BrowseItemKind.song].
+  final String? videoId;
+
+  /// browseId bila item membuka halaman lain.
+  final String? browseId;
+
+  /// Parameter browse tambahan (dipakai kategori mood/genre).
+  final String? browseParams;
+  final String? thumbnailUrl;
+  final int? durationSeconds;
+
+  /// Artis utama (untuk lagu).
+  final String? artist;
+
+  /// channelId artis utama, bila respons membawanya.
+  final String? artistChannelId;
+
+  /// Judul album (untuk lagu).
+  final String? album;
+
+  /// browseId album, bila respons membawanya.
+  final String? albumBrowseId;
+
+  /// Benar bila item ini membuka halaman browse lain saat diketuk.
+  bool get opensPage =>
+      kind != BrowseItemKind.song && browseId != null && browseId!.isNotEmpty;
+}
+
+/// Satu rak (shelf) di halaman browse: judul + daftar item.
+class BrowseShelf {
+  const BrowseShelf({
+    required this.title,
+    this.items = const <BrowseItem>[],
+    this.isSongList = false,
+  });
+
+  /// Judul rak apa adanya dari respons (mis. "Top songs").
+  final String title;
+  final List<BrowseItem> items;
+
+  /// Benar bila rak ini adalah daftar lagu vertikal (bukan deretan
+  /// kartu horizontal).
+  final bool isSongList;
+}
+
+/// Satu halaman browse: kepala + rak-rak.
+///
+/// Dipakai beranda Jelajah (FEmusic_home), halaman artis, album,
+/// playlist, dan kategori mood/genre. [continuation] adalah token
+/// halaman berikut daftar lagu (playlist panjang), atau null bila
+/// tidak ada.
+class BrowsePage {
+  const BrowsePage({
+    required this.title,
+    this.subtitle,
+    this.thumbnailUrl,
+    this.shelves = const <BrowseShelf>[],
+    this.continuation,
+  });
+
+  final String title;
+  final String? subtitle;
+  final String? thumbnailUrl;
+  final List<BrowseShelf> shelves;
+  final String? continuation;
+
+  /// Semua lagu di semua rak, sesuai urutan tampil.
+  List<BrowseItem> get allSongs => <BrowseItem>[
+    for (final BrowseShelf shelf in shelves)
+      for (final BrowseItem item in shelf.items)
+        if (item.kind == BrowseItemKind.song) item,
+  ];
+
+  bool get isEmpty => shelves.every((s) => s.items.isEmpty);
 }

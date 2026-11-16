@@ -3,6 +3,7 @@ import 'package:laras/core/theme/app_colors.dart';
 import 'package:laras/core/theme/app_theme.dart';
 import 'package:laras/core/widgets/album_cover.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
+import 'package:laras/player/player.dart';
 
 /// Mini-player 64 dp yang mengambang di atas tab bawah.
 ///
@@ -11,6 +12,13 @@ import 'package:laras/l10n/generated/app_localizations.dart';
 /// layar penuh; tombol sebelumnya, putar/jeda, dan berikutnya bekerja
 /// tanpa membuka Player. Garis tipis di tepi bawah menunjukkan progres
 /// lagu (kosong bila durasi belum diketahui).
+///
+/// State error (P0): bila [failure] tidak null, baris artis diganti pesan
+/// singkat sesuai penyebab ("Tidak ada internet" / "Internet lambat" /
+/// "Tidak bisa diputar") dan tombol putar berubah menjadi tombol coba lagi
+/// (ikon segar, label "Coba lagi"). Tanpa ini, lagu yang gagal putar tampil
+/// persis seperti lagu yang dijeda - pengguna tidak tahu ada masalah dan
+/// tidak tahu harus apa (insiden P0 16 Nov 2026).
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({
     super.key,
@@ -26,6 +34,7 @@ class MiniPlayer extends StatelessWidget {
     this.artUri,
     this.isFavorite,
     this.onToggleFavorite,
+    this.failure,
   });
 
   final String title;
@@ -52,12 +61,17 @@ class MiniPlayer extends StatelessWidget {
   /// Aksi tombol hati; null menyembunyikan tombolnya.
   final VoidCallback? onToggleFavorite;
 
+  /// Kegagalan putar lagu ini, bila ada. Non-null berarti mini-player
+  /// tampil dalam state error (pesan + tombol coba lagi).
+  final PlaybackFailure? failure;
+
   @override
   Widget build(BuildContext context) {
     final AppLocalizations strings = AppLocalizations.of(context)!;
     final ThemeData theme = Theme.of(context);
     final String? artist = this.artist;
     final Duration? duration = this.duration;
+    final PlaybackFailure? failure = this.failure;
     final double progress =
         duration != null && duration.inMilliseconds > 0
         ? (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0)
@@ -112,7 +126,32 @@ class MiniPlayer extends StatelessWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                if (artist != null)
+                                if (failure != null)
+                                  Row(
+                                    children: <Widget>[
+                                      const Icon(
+                                        Icons.error_outline,
+                                        size: 14,
+                                        color: AppColors.error,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: Text(
+                                          playbackFailureShortMessage(
+                                            strings,
+                                            failure,
+                                          ),
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: AppColors.error,
+                                              ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                else if (artist != null)
                                   Text(
                                     artist,
                                     style: theme.textTheme.bodySmall,
@@ -148,8 +187,18 @@ class MiniPlayer extends StatelessWidget {
                   ),
                   IconButton(
                     onPressed: onPlayPause,
-                    tooltip: isPlaying ? strings.pause : strings.play,
-                    icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
+                    tooltip: failure != null
+                        ? strings.retry
+                        : isPlaying
+                        ? strings.pause
+                        : strings.play,
+                    icon: Icon(
+                      failure != null
+                          ? Icons.refresh
+                          : isPlaying
+                          ? Icons.pause
+                          : Icons.play_arrow,
+                    ),
                   ),
                   IconButton(
                     onPressed: onNext,

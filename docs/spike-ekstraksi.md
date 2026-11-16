@@ -329,3 +329,63 @@ Skrip probe + bukti mentah:
 probe2.js + 40 respons, base-fad7e4e9.js, e2e-proof.js,
 measure-resolve.js + measure-resolve.json, diag-sts-vd.js,
 make_config_release.py, make_config_commit.py, player-config.json).
+
+## Adendum P0 — 16 Nov 2026 (insiden: demo P3 tidak bisa memutar di HP owner)
+
+### Akar: YouTube mengganti varian base.js
+
+Hash base.js SAMA (`fad7e4e9`) tapi isi berubah: 2.677.001 -> 2.876.993
+byte, path `player_es6.vflset` -> **`player_es6_tcl.vflset`**, sts 20767
+-> **20767001**. Varian `tcl` memakai obfuscation baru (tabel string
+`g.d='...'.split("{")` + indeks XOR + dispatcher `pa`); pola ekstraksi
+perilaku app tidak cocok (callSite NULL, table NULL) -> `ExtractorException`
+(unknownPlayerHash) SEBELUM request player. Rantai bunuh: resolve gagal ->
+`_doLoad` emit status error + lastError -> mini-player/beranda diam total
+(pesan error hanya ada di layar pemutar penuh).
+
+### Bukti probe P0 (VM, 16 Nov 2026; skrip di `hidden_files/tim-p0-debug/`)
+
+- Player WEB_REMIX + MWEB `k2XdBPv0D3Y` dengan sts + visitorData: OK
+  (format cipher 140/249/250/251). Tanpa sts: UNPLAYABLE. sts lama 20767
+  MASIH diterima.
+- Path non-tcl lama MASIH dilayani (200, 2.677.001 byte, w-table + rantai
+  signature ada, sts 20767) -> fallback varian di `PlayerScriptLoader`.
+- **Rantai lama MASIH VALID (probe-p0e):** solve base.js lama -> Range
+  0-999 URL final -> HTTP 206 + byte audio nyata (itag 140 audio/mp4
+  magic `00000018`; itag 251 audio/webm magic `1a45dfa3`). Satu 403
+  itag 251 di probe-p0b terbukti pengukuran sekali yang menyesatkan
+  (tanpa ikuti redirect); probe ber-redirect 4/4 berakhir 206.
+- **ANDROID_VR 1.65.10 (probe-p0d/p0f):** playability OK, URL LANGSUNG
+  139/140/249/251 (tanpa cipher); Range -> 206 + byte audio nyata.
+  Lolos TANPA `androidSdkVersion` dan TANPA sts -> client ke-3 fallback
+  + mode terdegradasi (dicoba saat script gagal dimuat). P1 sempat
+  mengecualikannya (LOGIN_REQUIRED); keadaan berubah dengan sts + vd.
+- Waktu request sah dari VM: HTML 41,2 dtk; base.js 52 dtk; player
+  16,2/22,2/26,5 dtk -> timeout app dinaikkan (player/search 15->30 dtk,
+  HTML 30->60 dtk, base.js 60->90 dtk; connect tetap 10 dtk).
+
+### Perbaikan P0 (hotfix, belum push saat adendum ditulis)
+
+1. Fallback varian non-tcl di `PlayerScriptLoader` (hanya bila ekstraksi
+   unknownPlayerHash; infiks `player_es6_tcl` -> `player_es6`).
+2. Mode terdegradasi orkestrator: script gagal -> lewati client
+   `requiresScript`, coba ANDROID_VR (`requiresScript: false`); bila
+   tidak ada client yang dicoba, error script yang dilempar.
+3. ANDROID_VR sebagai client fallback ke-3 (definisi + urutan bawaan).
+   Config remote (`config-v1/player-config.json`) BELUM memuat VR saat
+   adendum ditulis - koordinator perlu menambahkannya (name ANDROID_VR,
+   version 1.65.10, clientId 14, requiresScript false, UA Android).
+4. Rotasi client antar-resolve (`_rotationStart`, per videoId).
+5. Klasifikasi error 3 jenis (network/timeout/unplayable) + pesan
+   terpusat + state error di mini-player, banner di beranda (lagu
+   pilihan) dan Player layar penuh, errorMessage MediaSession.
+6. Jalur lokal dipagari: error engine lagu lokal langsung gagal tanpa
+   re-resolve jaringan (`_onEngineError`).
+
+### Masih belum diketahui (jujur)
+
+- Apakah QuickJS solver berjalan di HP owner (hanya uji perangkat).
+- Apakah batas 1 MiB googlevideo berlaku di IP residensial HP owner
+  (hanya uji perangkat; re-resolve P2 menanganinya bila ya).
+- Berapa lama varian non-tcl lama tetap dilayani YouTube (fallback ini
+  rapuh; VR adalah jaring pengaman yang tidak bergantung base.js).

@@ -13,6 +13,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:laras/l10n/generated/app_localizations_id.dart';
 
 import 'audio_player_port.dart';
+import 'playback_failure_messages.dart';
 import 'player_state.dart';
 import 'track.dart';
 
@@ -109,9 +110,7 @@ class LarasAudioHandler extends BaseAudioHandler {
             : AudioServiceShuffleMode.none,
         errorCode: snap.status == PlayerStatus.error ? 1 : null,
         errorMessage: snap.status == PlayerStatus.error && failure != null
-            ? (failure.kind == PlaybackFailureKind.network
-                  ? strings.noInternet
-                  : strings.songCannotPlay)
+            ? playbackFailureMessage(strings, failure)
             : null,
       ),
     );

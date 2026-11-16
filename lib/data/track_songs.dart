@@ -5,10 +5,10 @@
 /// sama untuk lagu yang sama.
 ///
 /// Aturan pemetaan: `videoId` menjadi id lagu; `artist` (satu string nama)
-/// menjadi satu nama artis; `album` (satu string judul) TIDAK dipetakan ke
-/// baris album karena [Track] tidak membawa browseId album, dan album
-/// tanpa id yang stabil akan duplikat. Album dicatat P4 dari hasil
-/// pencarian YTM yang membawa browseId.
+/// menjadi satu nama artis (dengan channelId bila `Track` membawanya);
+/// `album` dipetakan ke baris album HANYA bila `Track` membawa
+/// `albumBrowseId` yang stabil (dari hasil pencarian/browse YTM, P4) —
+/// judul album tanpa browseId tidak dibuatkan baris karena akan duplikat.
 library;
 
 import 'package:drift/drift.dart';
@@ -40,6 +40,34 @@ extension TrackSongMapping on Track {
     final String? name = artist?.trim();
     if (name == null || name.isEmpty) return const <String>[];
     return <String>[name];
+  }
+
+  /// channelId artis sejajar [artistNames] (nol atau satu id).
+  List<String?> get artistChannelIds {
+    final String? channelId = artistChannelId?.trim();
+    if (artistNames.isEmpty) return const <String?>[];
+    return <String?>[channelId];
+  }
+
+  /// Companion album untuk insert/update baris album dari metadata
+  /// track, atau null bila track tidak membawa browseId album.
+  ///
+  /// Album hanya dicatat bila ada browseId yang stabil (dari hasil
+  /// pencarian/browse YTM, P4); judul album tanpa browseId tidak
+  /// dibuatkan baris karena akan duplikat.
+  AlbumsCompanion? get albumCompanion {
+    final String? browseId = albumBrowseId?.trim();
+    final String? title = album?.trim();
+    if (browseId == null ||
+        browseId.isEmpty ||
+        title == null ||
+        title.isEmpty) {
+      return null;
+    }
+    return AlbumsCompanion(
+      id: Value<String>(browseId),
+      title: Value<String>(title),
+    );
   }
 }
 

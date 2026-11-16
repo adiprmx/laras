@@ -40,6 +40,7 @@ class ExtractorException implements Exception {
     this.cause, {
     this.clientName,
     this.isNetworkError = false,
+    this.isTimeout = false,
     this.detail,
   });
 
@@ -54,6 +55,13 @@ class ExtractorException implements Exception {
   /// yang putus bukan bukti YouTube berubah.
   final bool isNetworkError;
 
+  /// Benar bila penyebabnya adalah timeout: jaringan hidup tapi request
+  /// tidak selesai sebelum batas waktu. Selalu dibarengi [isNetworkError].
+  /// Dipakai pemutar untuk membedakan pesan "internet lambat, coba lagi"
+  /// dari "tidak ada internet". Timeout solver QuickJS (komputasi lokal,
+  /// bukan jaringan) TIDAK memakai flag ini.
+  final bool isTimeout;
+
   /// Detail teknis untuk log internal. Tidak pernah berisi URL stream.
   final String? detail;
 
@@ -62,6 +70,7 @@ class ExtractorException implements Exception {
     final buffer = StringBuffer('ExtractorException($cause');
     if (clientName != null) buffer.write(', client: $clientName');
     if (isNetworkError) buffer.write(', network');
+    if (isTimeout) buffer.write(', timeout');
     if (detail != null) buffer.write(', $detail');
     buffer.write(')');
     return buffer.toString();

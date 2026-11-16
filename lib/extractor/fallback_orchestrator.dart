@@ -3,9 +3,11 @@
 /// Alur resolve satu lagu:
 /// 1. Ambil config remote (urutan client + versi).
 /// 2. Muat script player (cache memori; unduh bila belum ada) untuk
-///    signatureTimestamp (sts). sts WAJIB di request player PERTAMA:
-///    terbukti 16 Nov 2026, request tanpa sts dibalas UNPLAYABLE
-///    ("The page needs to be reloaded.") walau visitorData ada.
+///    signatureTimestamp (sts). sts WAJIB di request player PERTAMA
+///    untuk client web: terbukti 16 Nov 2026, request tanpa sts dibalas
+///    UNPLAYABLE ("The page needs to be reloaded.") walau visitorData ada.
+///    Bila script gagal dimuat, resolve TIDAK langsung gagal: masuk mode
+///    terdegradasi (lihat bawah).
 /// 3. Untuk tiap client dalam urutan fallback:
 ///    a. Request player DENGAN sts (bila LOGIN_REQUIRED, refresh
 ///       visitorData + muat ulang script dan ulangi sekali).
@@ -16,6 +18,25 @@
 ///    d. Kegagalan apa pun -> client berikutnya.
 /// 4. Semua client habis -> lempar [ExtractorException] dengan penyebab
 ///    yang paling informatif (bukan jaringan bila ada penyebab lain).
+///
+/// Mode terdegradasi (P0): bila script player gagal dimuat (ekstraksi
+/// base.js gagal / jaringan putus saat unduh), client yang butuh script
+/// ([ClientDefinition.requiresScript]) DILEWATI tanpa request player -
+/// tanpa sts mereka DIJAMIN UNPLAYABLE, dan format cipher mereka tidak
+/// bisa dipecahkan tanpa solver. Client bebas-script (saat ini hanya
+/// ANDROID_VR, terbukti probe P0f lolos tanpa sts dan memberi URL
+/// langsung) tetap dicoba. Bila tidak ada client bebas-script yang
+/// berhasil, error script yang dilempar (bila tidak ada client yang
+/// dicoba sama sekali) atau error client terakhir yang paling informatif.
+/// Tanpa mode ini, satu perubahan base.js YouTube mematikan SEMUA putar
+/// - persis insiden P0 16 Nov 2026.
+///
+/// Rotasi client antar percobaan (P0): bila satu resolve menghabiskan
+/// semua client dan gagal, resolve BERIKUTNYA untuk lagu yang sama mulai
+/// dari client berikutnya dalam urutan fallback, bukan mengulang urutan
+/// yang sama dari awal. Retry pengguna dan re-resolve otomatis jadi
+/// mencoba client lain dulu. Sukses menghapus rotasi (urutan default
+/// lagi untuk resolve berikutnya).
 ///
 /// Single-flight per videoId: dua resolve bersamaan untuk lagu yang sama
 /// memakai satu pekerjaan. Log resolve (tanpa URL) disimpan di memori
@@ -58,6 +79,12 @@ class StreamResolver implements AudioResolver {
 
   final Map<String, Future<ResolvedAudio>> _inFlight = <String, Future<ResolvedAudio>>{};
   final List<ResolveLogEntry> _log = <ResolveLogEntry>[];
+
+  /// Rotasi client per videoId: nama client yang harus dicoba PERTAMA
+  /// pada resolve berikutnya untuk lagu itu (lihat catatan kelas).
+  /// Dibatasi 50 entri; rotasi adalah best-effort, kehilangannya hanya
+  /// berarti urutan kembali default.
+  final Map<String, String> _rotationStart = <String, String>{};
 
   /// Log resolve terakhir (maks 50 baris, tanpa URL).
   @override
@@ -112,24 +139,56 @@ class StreamResolver implements AudioResolver {
     // rendah; dengan visitorData segar WEB_REMIX lolos).
     await _innertube.ensureVisitorData(clients.first);
 
-    // signatureTimestamp WAJIB di request player pertama (tanpa sts,
-    // YouTube membalas UNPLAYABLE). Ambil dari cache memori bila sudah
-    // ada; bila belum, muat script sekarang (sekali, lalu ter-cache).
-    // Hash player tak dikenal = fail-fast (solver tidak akan bisa jalan);
-    // kegagalan jaringan = lanjut tanpa sts (best effort).
+    // signatureTimestamp WAJIB di request player pertama client web
+    // (tanpa sts, YouTube membalas UNPLAYABLE - terbukti 4/4 kombinasi
+    // di P1 dan dikonfirmasi ulang probe P0 16 Nov 2026). Ambil dari
+    // cache memori bila sudah ada; bila belum, muat script sekarang
+    // (sekali, lalu ter-cache).
+    //
+    // Gagal memuat script TIDAK langsung menggagalkan resolve (mode
+    // terdegradasi, P0): errornya dicatat, dan loop client di bawah
+    // melewati client yang butuh script sambil tetap mencoba client
+    // bebas-script (ANDROID_VR, terbukti probe P0f lolos tanpa sts).
+    // Loader sendiri sudah mengembalikan script cache bila unduhan gagal
+    // dan cache ada, jadi sampai di sini berarti benar-benar tidak ada
+    // script yang bisa dipakai saat ini.
     int? signatureTimestamp = _scriptLoader.cached?.signatureTimestamp;
+    ExtractorException? scriptError;
     if (signatureTimestamp == null) {
       try {
         final PlayerScript script = await _scriptLoader.load();
         signatureTimestamp = script.signatureTimestamp;
       } on ExtractorException catch (e) {
-        if (e.cause == ResolveFailureCause.unknownPlayerHash) rethrow;
+        scriptError = e;
+        _appendLog(
+          videoId: videoId,
+          clientName: 'SCRIPT',
+          outcome: 'GAGAL ${e.cause}',
+          durationMs: DateTime.now().difference(start).inMilliseconds,
+        );
       }
     }
 
+    // Urutan client diputar sesuai rotasi (P0): resolve sebelumnya yang
+    // gagal total menggeser client awal ke berikutnya.
+    final List<ClientDefinition> ordered = _rotatedOrder(clients, videoId);
     ExtractorException? lastError;
     ExtractorException? lastNonNetworkError;
-    for (final ClientDefinition client in clients) {
+    bool anyClientTried = false;
+    for (final ClientDefinition client in ordered) {
+      if (scriptError != null && client.requiresScript) {
+        // Mode terdegradasi: tanpa sts + tanpa solver, client ini tidak
+        // mungkin berhasil (UNPLAYABLE dijamin + cipher tak terpecahkan).
+        // Lewati tanpa membuang satu request player pun.
+        _appendLog(
+          videoId: videoId,
+          clientName: client.name,
+          outcome: 'LEWATI (butuh script)',
+          durationMs: 0,
+        );
+        continue;
+      }
+      anyClientTried = true;
       final DateTime clientStart = DateTime.now();
       try {
         final ResolvedAudio result = await _tryClient(
@@ -144,6 +203,9 @@ class StreamResolver implements AudioResolver {
           outcome: 'OK itag ${result.itag}',
           durationMs: DateTime.now().difference(clientStart).inMilliseconds,
         );
+        // Sukses: rotasi dihapus, resolve berikutnya mulai dari urutan
+        // default lagi.
+        _rotationStart.remove(videoId);
         return ResolvedAudio(
           videoId: result.videoId,
           url: result.url,
@@ -169,12 +231,62 @@ class StreamResolver implements AudioResolver {
         if (e.cause == ResolveFailureCause.unknownPlayerHash) break;
       }
     }
+    // Semua client habis: geser rotasi supaya resolve berikutnya untuk
+    // lagu ini mulai dari client berikutnya, bukan mengulang urutan sama.
+    _advanceRotation(videoId, clients, ordered);
+    // Bila tidak ada satu pun client yang dicoba (semua dilewati karena
+    // butuh script), penyebab sebenarnya adalah error script itu sendiri
+    // - melemparnya menjaga klasifikasi + deteksi kanari tetap menunjuk
+    // akar yang benar. Bila ada client yang dicoba, pakai aturan biasa
+    // (error non-jaringan terakhir lebih informatif).
+    if (!anyClientTried && scriptError != null) throw scriptError;
     throw lastNonNetworkError ??
         lastError ??
+        scriptError ??
         const ExtractorException(
           ResolveFailureCause.emptyResponse,
           detail: 'semua client gagal tanpa penyebab tercatat',
         );
+  }
+
+  /// Urutan client untuk resolve ini: urutan config diputar supaya client
+  /// yang tersimpan di rotasi menjadi yang pertama. Tanpa rotasi tersimpan
+  /// (atau nama tersimpan tidak ada lagi di config), urutan config dipakai
+  /// apa adanya.
+  List<ClientDefinition> _rotatedOrder(
+    List<ClientDefinition> clients,
+    String videoId,
+  ) {
+    final String? startName = _rotationStart[videoId];
+    if (startName == null) return clients;
+    final int startIndex = clients.indexWhere(
+      (ClientDefinition c) => c.name == startName,
+    );
+    if (startIndex <= 0) return clients;
+    return <ClientDefinition>[
+      ...clients.sublist(startIndex),
+      ...clients.sublist(0, startIndex),
+    ];
+  }
+
+  /// Geser rotasi satu langkah: resolve berikutnya untuk [videoId] mulai
+  /// dari client sesudah client pertama yang dicoba di resolve ini
+  /// (melingkar dalam urutan config). Dengan 2 client, ini berarti urutan
+  /// bertukar setiap kegagalan total: [W, M] -> [M, W] -> [W, M].
+  void _advanceRotation(
+    String videoId,
+    List<ClientDefinition> clients,
+    List<ClientDefinition> ordered,
+  ) {
+    if (clients.length < 2 || ordered.isEmpty) return;
+    final String firstTried = ordered.first.name;
+    final int firstIndex = clients.indexWhere(
+      (ClientDefinition c) => c.name == firstTried,
+    );
+    if (firstIndex < 0) return;
+    final String nextName = clients[(firstIndex + 1) % clients.length].name;
+    if (_rotationStart.length >= 50) _rotationStart.clear();
+    _rotationStart[videoId] = nextName;
   }
 
   Future<ResolvedAudio> _tryClient(

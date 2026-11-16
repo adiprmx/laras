@@ -109,6 +109,9 @@ class RemotePlayerConfig {
         if (name == null || version == null || userAgent == null || clientId == null) {
           return null;
         }
+        // Opsional: false untuk client URL-langsung tanpa sts
+        // (ANDROID_VR). Default true bila kunci tidak ada.
+        final bool requiresScript = raw['requiresScript'] as bool? ?? true;
         clients.add(
           ClientDefinition(
             name: name,
@@ -119,6 +122,7 @@ class RemotePlayerConfig {
             },
             userAgent: userAgent,
             clientId: clientId,
+            requiresScript: requiresScript,
           ),
         );
       }

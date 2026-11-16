@@ -153,7 +153,10 @@ class LibraryCounts {
 /// Hasil pencarian lokal: lagu dan artis yang cocok, masing-masing
 /// terurut relevansi bm25 (paling relevan dulu).
 class LocalSearchResults {
-  const LocalSearchResults({this.songs = const <SongView>[], this.artists = const <Artist>[]});
+  const LocalSearchResults({
+    this.songs = const <SongView>[],
+    this.artists = const <Artist>[],
+  });
 
   final List<SongView> songs;
   final List<Artist> artists;
@@ -257,12 +260,18 @@ class LibraryService {
   /// ulang sesuai [artistNames] (urutan = posisi). Baris FTS diperbarui
   /// dalam transaksi yang sama.
   ///
+  /// [artistChannelIds] sejajar dengan [artistNames]: bila posisi ke-i
+  /// membawa channelId YTM, artis itu disimpan dengan channelId tersebut
+  /// (bukan id semu lokal). Bila daftar ini lebih pendek dari
+  /// [artistNames], posisi yang tidak tercakup memakai id semu.
+  ///
   /// [addToLibrary] benar berarti lagu masuk Library (`in_library = 1`).
   /// Lagu yang sudah di Library tetap di Library walau dipanggil dengan
   /// [addToLibrary] salah.
   Future<void> upsertSong(
     SongsCompanion song, {
     List<String> artistNames = const <String>[],
+    List<String?> artistChannelIds = const <String?>[],
     AlbumsCompanion? album,
     bool addToLibrary = false,
   }) async {
@@ -276,6 +285,7 @@ class LibraryService {
       await _replaceSongArtists(
         withAlbum.id.value,
         artistNames,
+        channelIds: artistChannelIds,
         now: now,
       );
       await _syncSongFts(
@@ -320,9 +330,7 @@ class LibraryService {
     final AlbumsCompanion withDate = album.dateAdded.present
         ? album
         : album.copyWith(dateAdded: Value<DateTime>(DateTime.now()));
-    await db
-        .into(db.albums)
-        .insert(withDate, mode: InsertMode.insertOrIgnore);
+    await db.into(db.albums).insert(withDate, mode: InsertMode.insertOrIgnore);
     return id;
   }
 
@@ -332,9 +340,9 @@ class LibraryService {
     required bool addToLibrary,
   }) async {
     final String id = song.id.value;
-    final Song? existing = await (db.select(db.songs)
-          ..where((Songs s) => s.id.equals(id)))
-        .getSingleOrNull();
+    final Song? existing = await (db.select(
+      db.songs,
+    )..where((Songs s) => s.id.equals(id))).getSingleOrNull();
     if (existing == null) {
       await db
           .into(db.songs)
@@ -364,23 +372,25 @@ class LibraryService {
   Future<void> _replaceSongArtists(
     String songId,
     List<String> artistNames, {
+    List<String?> channelIds = const <String?>[],
     required DateTime now,
   }) async {
-    await (db.delete(db.songArtists)
-          ..where((SongArtists m) => m.songId.equals(songId)))
-        .go();
+    await (db.delete(
+      db.songArtists,
+    )..where((SongArtists m) => m.songId.equals(songId))).go();
     for (int i = 0; i < artistNames.length; i++) {
       final String name = artistNames[i].trim();
       if (name.isEmpty) continue;
-      final String artistId = localArtistIdForName(name);
+      final String? channelId = i < channelIds.length
+          ? channelIds[i]?.trim()
+          : null;
+      final String artistId = channelId != null && channelId.isNotEmpty
+          ? channelId
+          : localArtistIdForName(name);
       await db
           .into(db.artists)
           .insert(
-            ArtistsCompanion.insert(
-              id: artistId,
-              name: name,
-              dateAdded: now,
-            ),
+            ArtistsCompanion.insert(id: artistId, name: name, dateAdded: now),
             mode: InsertMode.insertOrIgnore,
           );
       await db
@@ -403,9 +413,9 @@ class LibraryService {
   }) async {
     final LibrarySearch fts = db.librarySearch;
     await (db.delete(fts)..where(
-      (LibrarySearch f) =>
-          f.kind.equals('song') & f.refId.equals(songId),
-    )).go();
+          (LibrarySearch f) => f.kind.equals('song') & f.refId.equals(songId),
+        ))
+        .go();
     await db
         .into(fts)
         .insert(
@@ -421,9 +431,10 @@ class LibraryService {
   Future<void> _syncArtistFts(String artistId, {required String name}) async {
     final LibrarySearch fts = db.librarySearch;
     await (db.delete(fts)..where(
-      (LibrarySearch f) =>
-          f.kind.equals('artist') & f.refId.equals(artistId),
-    )).go();
+          (LibrarySearch f) =>
+              f.kind.equals('artist') & f.refId.equals(artistId),
+        ))
+        .go();
     await db
         .into(fts)
         .insert(
@@ -459,9 +470,9 @@ class LibraryService {
 
   /// Satu lagu beserta artisnya, atau null bila belum dikenal app.
   Future<SongView?> songById(String id) async {
-    final Song? song = await (db.select(db.songs)
-          ..where((Songs s) => s.id.equals(id)))
-        .getSingleOrNull();
+    final Song? song = await (db.select(
+      db.songs,
+    )..where((Songs s) => s.id.equals(id))).getSingleOrNull();
     if (song == null) return null;
     return (await _attachArtists(<Song>[song])).single;
   }
@@ -479,39 +490,31 @@ class LibraryService {
     switch (sort) {
       case SongSort.newest:
         query.where(
-          (Songs s) =>
-              s.inLibrary.equals(true) & _newestCursor(s, after?.song),
+          (Songs s) => s.inLibrary.equals(true) & _newestCursor(s, after?.song),
         );
         query.orderBy(<OrderingTerm Function(Songs)>[
-          (Songs s) => OrderingTerm(
-            expression: s.dateAdded,
-            mode: OrderingMode.desc,
-          ),
           (Songs s) =>
-              OrderingTerm(expression: s.id, mode: OrderingMode.desc),
+              OrderingTerm(expression: s.dateAdded, mode: OrderingMode.desc),
+          (Songs s) => OrderingTerm(expression: s.id, mode: OrderingMode.desc),
         ]);
       case SongSort.byName:
         query.where(
-          (Songs s) =>
-              s.inLibrary.equals(true) & _nameCursor(s, after?.song),
+          (Songs s) => s.inLibrary.equals(true) & _nameCursor(s, after?.song),
         );
         query.orderBy(<OrderingTerm Function(Songs)>[
-          (Songs s) =>
-              OrderingTerm(expression: s.title.lower()),
+          (Songs s) => OrderingTerm(expression: s.title.lower()),
           (Songs s) => OrderingTerm(expression: s.id),
         ]);
       case SongSort.mostPlayed:
         query.where(
-          (Songs s) =>
-              s.inLibrary.equals(true) & _playedCursor(s, after?.song),
+          (Songs s) => s.inLibrary.equals(true) & _playedCursor(s, after?.song),
         );
         query.orderBy(<OrderingTerm Function(Songs)>[
           (Songs s) => OrderingTerm(
             expression: s.totalPlayTimeMs,
             mode: OrderingMode.desc,
           ),
-          (Songs s) =>
-              OrderingTerm(expression: s.id, mode: OrderingMode.desc),
+          (Songs s) => OrderingTerm(expression: s.id, mode: OrderingMode.desc),
         ]);
     }
     query.limit(limit);
@@ -524,14 +527,11 @@ class LibraryService {
     int limit = kPageSize,
   }) async {
     final SimpleSelectStatement<Songs, Song> query = db.select(db.songs)
-      ..where(
-        (Songs s) => s.liked.equals(true) & _newestCursor(s, after?.song),
-      )
+      ..where((Songs s) => s.liked.equals(true) & _newestCursor(s, after?.song))
       ..orderBy(<OrderingTerm Function(Songs)>[
         (Songs s) =>
             OrderingTerm(expression: s.dateAdded, mode: OrderingMode.desc),
-        (Songs s) =>
-            OrderingTerm(expression: s.id, mode: OrderingMode.desc),
+        (Songs s) => OrderingTerm(expression: s.id, mode: OrderingMode.desc),
       ])
       ..limit(limit);
     return _attachArtists(await query.get());
@@ -543,23 +543,22 @@ class LibraryService {
     SongView? after,
     int limit = kPageSize,
   }) async {
-    final JoinedSelectStatement<HasResultSet, dynamic> query = db
-        .select(db.songs)
-        .join(<Join<HasResultSet, dynamic>>[
-          innerJoin(
-            db.songArtists,
-            db.songArtists.songId.equalsExp(db.songs.id),
-          ),
-        ])
-      ..where(
-        db.songArtists.artistId.equals(artistId) &
-            _nameCursor(db.songs, after?.song),
-      )
-      ..orderBy(<OrderingTerm>[
-        OrderingTerm(expression: db.songs.title.lower()),
-        OrderingTerm(expression: db.songs.id),
-      ])
-      ..limit(limit);
+    final JoinedSelectStatement<HasResultSet, dynamic> query =
+        db.select(db.songs).join(<Join<HasResultSet, dynamic>>[
+            innerJoin(
+              db.songArtists,
+              db.songArtists.songId.equalsExp(db.songs.id),
+            ),
+          ])
+          ..where(
+            db.songArtists.artistId.equals(artistId) &
+                _nameCursor(db.songs, after?.song),
+          )
+          ..orderBy(<OrderingTerm>[
+            OrderingTerm(expression: db.songs.title.lower()),
+            OrderingTerm(expression: db.songs.id),
+          ])
+          ..limit(limit);
     final List<TypedResult> rows = await query.get();
     final List<Song> songs = rows
         .map((TypedResult r) => r.readTable(db.songs))
@@ -575,8 +574,7 @@ class LibraryService {
   }) async {
     final SimpleSelectStatement<Songs, Song> query = db.select(db.songs)
       ..where(
-        (Songs s) =>
-            s.albumId.equals(albumId) & _nameCursor(s, after?.song),
+        (Songs s) => s.albumId.equals(albumId) & _nameCursor(s, after?.song),
       )
       ..orderBy(<OrderingTerm Function(Songs)>[
         (Songs s) => OrderingTerm(expression: s.title.lower()),
@@ -601,8 +599,7 @@ class LibraryService {
     if (after == null) return const Constant<bool>(true);
     final String titleKey = after.title.toLowerCase();
     return s.title.lower().isBiggerThanValue(titleKey) |
-        (s.title.lower().equals(titleKey) &
-            s.id.isBiggerThanValue(after.id));
+        (s.title.lower().equals(titleKey) & s.id.isBiggerThanValue(after.id));
   }
 
   /// Syarat keyset untuk urutan sering diputar: (totalPlayTimeMs, id)
@@ -618,18 +615,18 @@ class LibraryService {
   Future<List<SongView>> _attachArtists(List<Song> songs) async {
     if (songs.isEmpty) return const <SongView>[];
     final List<String> ids = songs.map((Song s) => s.id).toList();
-    final List<SongArtist> mappings = await (db.select(db.songArtists)
-          ..where((SongArtists m) => m.songId.isIn(ids)))
-        .get();
+    final List<SongArtist> mappings = await (db.select(
+      db.songArtists,
+    )..where((SongArtists m) => m.songId.isIn(ids))).get();
     final List<String> artistIds = mappings
         .map((SongArtist m) => m.artistId)
         .toSet()
         .toList(growable: false);
     final Map<String, String> namesById = <String, String>{};
     if (artistIds.isNotEmpty) {
-      final List<Artist> artists = await (db.select(db.artists)
-            ..where((Artists a) => a.id.isIn(artistIds)))
-          .get();
+      final List<Artist> artists = await (db.select(
+        db.artists,
+      )..where((Artists a) => a.id.isIn(artistIds))).get();
       for (final Artist artist in artists) {
         namesById[artist.id] = artist.name;
       }
@@ -639,21 +636,24 @@ class LibraryService {
     for (final SongArtist m in mappings) {
       final String? name = namesById[m.artistId];
       if (name == null) continue;
-      grouped
-          .putIfAbsent(m.songId, () => <(int, String)>[])
-          .add((m.position, name));
+      grouped.putIfAbsent(m.songId, () => <(int, String)>[]).add((
+        m.position,
+        name,
+      ));
     }
-    return songs.map((Song song) {
-      final List<(int, String)> names =
-          grouped[song.id] ?? <(int, String)>[];
-      names.sort(
-        ((int, String) a, (int, String) b) => a.$1.compareTo(b.$1),
-      );
-      return SongView(
-        song: song,
-        artistNames: names.map(((int, String) e) => e.$2).toList(),
-      );
-    }).toList(growable: false);
+    return songs
+        .map((Song song) {
+          final List<(int, String)> names =
+              grouped[song.id] ?? <(int, String)>[];
+          names.sort(
+            ((int, String) a, (int, String) b) => a.$1.compareTo(b.$1),
+          );
+          return SongView(
+            song: song,
+            artistNames: names.map(((int, String) e) => e.$2).toList(),
+          );
+        })
+        .toList(growable: false);
   }
 
   /// Hitungan isi library.
@@ -663,15 +663,11 @@ class LibraryService {
     );
     final int artists = await _count('SELECT COUNT(*) AS c FROM artists');
     final int albums = await _count('SELECT COUNT(*) AS c FROM albums');
-    final int playlists = await _count(
-      'SELECT COUNT(*) AS c FROM playlists',
-    );
+    final int playlists = await _count('SELECT COUNT(*) AS c FROM playlists');
     final int favorites = await _count(
       'SELECT COUNT(*) AS c FROM songs WHERE liked = 1',
     );
-    final int history = await _count(
-      'SELECT COUNT(*) AS c FROM play_events',
-    );
+    final int history = await _count('SELECT COUNT(*) AS c FROM play_events');
     return LibraryCounts(
       songs: songs,
       artists: artists,
@@ -693,9 +689,9 @@ class LibraryService {
 
   /// Apakah lagu ini difavoritkan (false bila lagu belum dikenal).
   Future<bool> isLiked(String songId) async {
-    final Song? song = await (db.select(db.songs)
-          ..where((Songs s) => s.id.equals(songId)))
-        .getSingleOrNull();
+    final Song? song = await (db.select(
+      db.songs,
+    )..where((Songs s) => s.id.equals(songId))).getSingleOrNull();
     return song?.liked ?? false;
   }
 
@@ -711,23 +707,20 @@ class LibraryService {
   /// (pemanggil memastikan lewat [upsertSong] dulu); bila belum ada,
   /// melempar [StateError].
   Future<bool> toggleLiked(String songId) async {
-    final Song? song = await (db.select(db.songs)
-          ..where((Songs s) => s.id.equals(songId)))
-        .getSingleOrNull();
+    final Song? song = await (db.select(
+      db.songs,
+    )..where((Songs s) => s.id.equals(songId))).getSingleOrNull();
     if (song == null) {
       throw StateError('toggleLiked: lagu $songId belum ada di database');
     }
     final bool liked = !song.liked;
-    await (db.update(db.songs)..where((Songs s) => s.id.equals(songId)))
-        .write(
-          SongsCompanion(
-            liked: Value<bool>(liked),
-            inLibrary: liked
-                ? const Value<bool>(true)
-                : const Value<bool>.absent(),
-            dateModified: Value<DateTime>(DateTime.now()),
-          ),
-        );
+    await (db.update(db.songs)..where((Songs s) => s.id.equals(songId))).write(
+      SongsCompanion(
+        liked: Value<bool>(liked),
+        inLibrary: liked ? const Value<bool>(true) : const Value<bool>.absent(),
+        dateModified: Value<DateTime>(DateTime.now()),
+      ),
+    );
     return liked;
   }
 
@@ -736,17 +729,18 @@ class LibraryService {
   /// ada (riwayat adalah fakta yang sudah terjadi).
   Future<void> removeFromLibrary(String songId) async {
     await db.transaction(() async {
-      await (db.delete(db.playlistSongs)
-            ..where((PlaylistSongs p) => p.songId.equals(songId)))
-          .go();
-      await (db.update(db.songs)..where((Songs s) => s.id.equals(songId)))
-          .write(
-            SongsCompanion(
-              liked: const Value<bool>(false),
-              inLibrary: const Value<bool>(false),
-              dateModified: Value<DateTime>(DateTime.now()),
-            ),
-          );
+      await (db.delete(
+        db.playlistSongs,
+      )..where((PlaylistSongs p) => p.songId.equals(songId))).go();
+      await (db.update(
+        db.songs,
+      )..where((Songs s) => s.id.equals(songId))).write(
+        SongsCompanion(
+          liked: const Value<bool>(false),
+          inLibrary: const Value<bool>(false),
+          dateModified: Value<DateTime>(DateTime.now()),
+        ),
+      );
     });
   }
 
@@ -776,9 +770,7 @@ class LibraryService {
     final List<Variable<Object>> vars = <Variable<Object>>[];
     if (after != null) {
       final String nameKey = after.artist.name.toLowerCase();
-      sql.write(
-        'WHERE lower(a.name) > ? OR (lower(a.name) = ? AND a.id > ?) ',
-      );
+      sql.write('WHERE lower(a.name) > ? OR (lower(a.name) = ? AND a.id > ?) ');
       vars.addAll(<Variable<Object>>[
         Variable<String>(nameKey),
         Variable<String>(nameKey),
@@ -798,18 +790,20 @@ class LibraryService {
           },
         )
         .get();
-    return rows.map((QueryRow r) {
-      return ArtistWithCount(
-        artist: Artist(
-          id: r.read<String>('id'),
-          name: r.read<String>('name'),
-          thumbnailUrl: r.readNullable<String>('thumbnail_url'),
-          liked: r.read<bool>('liked'),
-          dateAdded: r.read<DateTime>('date_added'),
-        ),
-        songCount: r.read<int>('song_count'),
-      );
-    }).toList(growable: false);
+    return rows
+        .map((QueryRow r) {
+          return ArtistWithCount(
+            artist: Artist(
+              id: r.read<String>('id'),
+              name: r.read<String>('name'),
+              thumbnailUrl: r.readNullable<String>('thumbnail_url'),
+              liked: r.read<bool>('liked'),
+              dateAdded: r.read<DateTime>('date_added'),
+            ),
+            songCount: r.read<int>('song_count'),
+          );
+        })
+        .toList(growable: false);
   }
 
   /// Halaman album beserta jumlah lagu Library masing-masing, urut nama.
@@ -846,29 +840,110 @@ class LibraryService {
           readsFrom: <TableInfo<Table, Object?>>{db.albums, db.songs},
         )
         .get();
-    return rows.map((QueryRow r) {
-      return AlbumWithCount(
-        album: Album(
-          id: r.read<String>('id'),
-          title: r.read<String>('title'),
-          year: r.readNullable<int>('year'),
-          thumbnailUrl: r.readNullable<String>('thumbnail_url'),
-          liked: r.read<bool>('liked'),
-          dateAdded: r.read<DateTime>('date_added'),
-        ),
-        songCount: r.read<int>('song_count'),
-      );
-    }).toList(growable: false);
+    return rows
+        .map((QueryRow r) {
+          return AlbumWithCount(
+            album: Album(
+              id: r.read<String>('id'),
+              title: r.read<String>('title'),
+              year: r.readNullable<int>('year'),
+              thumbnailUrl: r.readNullable<String>('thumbnail_url'),
+              liked: r.read<bool>('liked'),
+              dateAdded: r.read<DateTime>('date_added'),
+            ),
+            songCount: r.read<int>('song_count'),
+          );
+        })
+        .toList(growable: false);
   }
 
   Future<Artist?> artistById(String id) async {
-    return (db.select(db.artists)..where((Artists a) => a.id.equals(id)))
-        .getSingleOrNull();
+    return (db.select(
+      db.artists,
+    )..where((Artists a) => a.id.equals(id))).getSingleOrNull();
+  }
+
+  /// Gabungkan artis id semu (`local-<hash nama>`) ke channelId YTM
+  /// aslinya (P4).
+  ///
+  /// Dipanggil saat data pencarian/browse memberi channelId untuk nama
+  /// artis yang selama ini hanya dikenal namanya: pemetaan lagu artis
+  /// semu dipindah ke baris channelId (duplikat posisi diabaikan),
+  /// baris artis semu dihapus, dan baris FTS artis diperbarui. Bila
+  /// tidak ada artis semu untuk nama itu, hanya memastikan baris
+  /// channelId ada (dengan nama + sampul terbaru bila diberikan).
+  /// Bila [channelId] kosong atau sama dengan id semu, tidak terjadi
+  /// apa-apa.
+  Future<void> mergeArtistChannel({
+    required String name,
+    required String channelId,
+    String? thumbnailUrl,
+  }) async {
+    final String trimmedName = name.trim();
+    final String trimmedChannelId = channelId.trim();
+    if (trimmedName.isEmpty || trimmedChannelId.isEmpty) return;
+    final String pseudoId = localArtistIdForName(trimmedName);
+    if (pseudoId == trimmedChannelId) return;
+    await db.transaction(() async {
+      final DateTime now = DateTime.now();
+      final Artist? existing = await (db.select(
+        db.artists,
+      )..where((Artists a) => a.id.equals(trimmedChannelId))).getSingleOrNull();
+      if (existing == null) {
+        await db
+            .into(db.artists)
+            .insert(
+              ArtistsCompanion.insert(
+                id: trimmedChannelId,
+                name: trimmedName,
+                thumbnailUrl: Value<String?>(thumbnailUrl),
+                dateAdded: now,
+              ),
+            );
+      } else if (thumbnailUrl != null &&
+          thumbnailUrl.isNotEmpty &&
+          (existing.thumbnailUrl == null || existing.thumbnailUrl!.isEmpty)) {
+        await (db.update(
+          db.artists,
+        )..where((Artists a) => a.id.equals(trimmedChannelId))).write(
+          ArtistsCompanion(thumbnailUrl: Value<String?>(thumbnailUrl)),
+        );
+      }
+      final List<SongArtist> mappings = await (db.select(
+        db.songArtists,
+      )..where((SongArtists m) => m.artistId.equals(pseudoId))).get();
+      for (final SongArtist mapping in mappings) {
+        await db
+            .into(db.songArtists)
+            .insert(
+              SongArtistsCompanion.insert(
+                songId: mapping.songId,
+                artistId: trimmedChannelId,
+                position: mapping.position,
+              ),
+              mode: InsertMode.insertOrIgnore,
+            );
+      }
+      await (db.delete(
+        db.songArtists,
+      )..where((SongArtists m) => m.artistId.equals(pseudoId))).go();
+      await (db.delete(
+        db.artists,
+      )..where((Artists a) => a.id.equals(pseudoId))).go();
+      await _syncArtistFts(trimmedChannelId, name: trimmedName);
+      final LibrarySearch fts = db.librarySearch;
+      await (db.delete(fts)..where(
+            (LibrarySearch f) =>
+                f.kind.equals('artist') & f.refId.equals(pseudoId),
+          ))
+          .go();
+    });
   }
 
   Future<Album?> albumById(String id) async {
-    return (db.select(db.albums)..where((Albums a) => a.id.equals(id)))
-        .getSingleOrNull();
+    return (db.select(
+      db.albums,
+    )..where((Albums a) => a.id.equals(id))).getSingleOrNull();
   }
 
   // ------------------------------------------------------------------
@@ -899,39 +974,41 @@ class LibraryService {
   Future<void> renamePlaylist(int id, String name) async {
     final String trimmed = name.trim();
     _validatePlaylistName(trimmed);
-    await (db.update(db.playlists)
-          ..where((Playlists p) => p.id.equals(id)))
-        .write(
-          PlaylistsCompanion(
-            name: Value<String>(trimmed),
-            updatedAt: Value<DateTime>(DateTime.now()),
-          ),
-        );
+    await (db.update(
+      db.playlists,
+    )..where((Playlists p) => p.id.equals(id))).write(
+      PlaylistsCompanion(
+        name: Value<String>(trimmed),
+        updatedAt: Value<DateTime>(DateTime.now()),
+      ),
+    );
   }
 
   /// Ubah deskripsi playlist (null berarti kosongkan deskripsi).
   Future<void> updatePlaylistDescription(int id, String? description) async {
     _validatePlaylistDescription(description);
-    await (db.update(db.playlists)
-          ..where((Playlists p) => p.id.equals(id)))
-        .write(
-          PlaylistsCompanion(
-            description: Value<String?>(description?.trim()),
-            updatedAt: Value<DateTime>(DateTime.now()),
-          ),
-        );
+    await (db.update(
+      db.playlists,
+    )..where((Playlists p) => p.id.equals(id))).write(
+      PlaylistsCompanion(
+        description: Value<String?>(description?.trim()),
+        updatedAt: Value<DateTime>(DateTime.now()),
+      ),
+    );
   }
 
   /// Hapus playlist. Lagu di dalamnya ikut terhapus dari playlist
   /// (CASCADE); lagu di Library tidak ikut terhapus.
   Future<void> deletePlaylist(int id) async {
-    await (db.delete(db.playlists)..where((Playlists p) => p.id.equals(id)))
-        .go();
+    await (db.delete(
+      db.playlists,
+    )..where((Playlists p) => p.id.equals(id))).go();
   }
 
   Future<Playlist?> playlistById(int id) async {
-    return (db.select(db.playlists)..where((Playlists p) => p.id.equals(id)))
-        .getSingleOrNull();
+    return (db.select(
+      db.playlists,
+    )..where((Playlists p) => p.id.equals(id))).getSingleOrNull();
   }
 
   /// Halaman playlist beserta jumlah lagu masing-masing, urut terakhir
@@ -940,8 +1017,9 @@ class LibraryService {
     PlaylistWithCount? after,
     int limit = kPageSize,
   }) async {
-    final SimpleSelectStatement<Playlists, Playlist> query =
-        db.select(db.playlists);
+    final SimpleSelectStatement<Playlists, Playlist> query = db.select(
+      db.playlists,
+    );
     if (after != null) {
       final Playlist p = after.playlist;
       query.where(
@@ -988,12 +1066,12 @@ class LibraryService {
   /// ke Library. Mengembalikan true bila lagu benar-benar ditambahkan.
   Future<bool> addSongToPlaylist(int playlistId, String songId) async {
     return db.transaction(() async {
-      final PlaylistSong? existing = await (db.select(db.playlistSongs)
-            ..where(
-              (PlaylistSongs p) =>
-                  p.playlistId.equals(playlistId) & p.songId.equals(songId),
-            ))
-          .getSingleOrNull();
+      final PlaylistSong? existing =
+          await (db.select(db.playlistSongs)..where(
+                (PlaylistSongs p) =>
+                    p.playlistId.equals(playlistId) & p.songId.equals(songId),
+              ))
+              .getSingleOrNull();
       if (existing != null) return false;
       final int position = await _nextPlaylistPosition(playlistId);
       final DateTime now = DateTime.now();
@@ -1029,9 +1107,10 @@ class LibraryService {
   Future<void> removeSongFromPlaylist(int playlistId, String songId) async {
     await db.transaction(() async {
       await (db.delete(db.playlistSongs)..where(
-        (PlaylistSongs p) =>
-            p.playlistId.equals(playlistId) & p.songId.equals(songId),
-      )).go();
+            (PlaylistSongs p) =>
+                p.playlistId.equals(playlistId) & p.songId.equals(songId),
+          ))
+          .go();
       await _renumberPlaylist(playlistId);
       await _touchPlaylist(playlistId, DateTime.now());
     });
@@ -1045,12 +1124,13 @@ class LibraryService {
     int newPosition,
   ) async {
     await db.transaction(() async {
-      final List<PlaylistSong> rows = await (db.select(db.playlistSongs)
-            ..where((PlaylistSongs p) => p.playlistId.equals(playlistId))
-            ..orderBy(<OrderingTerm Function(PlaylistSongs)>[
-              (PlaylistSongs p) => OrderingTerm(expression: p.position),
-            ]))
-          .get();
+      final List<PlaylistSong> rows =
+          await (db.select(db.playlistSongs)
+                ..where((PlaylistSongs p) => p.playlistId.equals(playlistId))
+                ..orderBy(<OrderingTerm Function(PlaylistSongs)>[
+                  (PlaylistSongs p) => OrderingTerm(expression: p.position),
+                ]))
+              .get();
       final List<String> ids = rows.map((PlaylistSong r) => r.songId).toList();
       final int from = ids.indexOf(songId);
       if (from == -1) return;
@@ -1059,9 +1139,10 @@ class LibraryService {
       ids.insert(to, songId);
       for (int i = 0; i < ids.length; i++) {
         await (db.update(db.playlistSongs)..where(
-          (PlaylistSongs p) =>
-              p.playlistId.equals(playlistId) & p.songId.equals(ids[i]),
-        )).write(PlaylistSongsCompanion(position: Value<int>(i)));
+              (PlaylistSongs p) =>
+                  p.playlistId.equals(playlistId) & p.songId.equals(ids[i]),
+            ))
+            .write(PlaylistSongsCompanion(position: Value<int>(i)));
       }
       await _touchPlaylist(playlistId, DateTime.now());
     });
@@ -1073,9 +1154,9 @@ class LibraryService {
     PlaylistSongEntry? after,
     int limit = kPageSize,
   }) async {
-    final SimpleSelectStatement<PlaylistSongs, PlaylistSong> query =
-        db.select(db.playlistSongs)
-      ..where((PlaylistSongs p) => p.playlistId.equals(playlistId));
+    final SimpleSelectStatement<PlaylistSongs, PlaylistSong> query = db.select(
+      db.playlistSongs,
+    )..where((PlaylistSongs p) => p.playlistId.equals(playlistId));
     if (after != null) {
       query.where(
         (PlaylistSongs p) => p.position.isBiggerThanValue(after.position),
@@ -1089,9 +1170,9 @@ class LibraryService {
     final List<PlaylistSong> rows = await query.get();
     if (rows.isEmpty) return const <PlaylistSongEntry>[];
     final List<String> ids = rows.map((PlaylistSong r) => r.songId).toList();
-    final List<Song> songs = await (db.select(db.songs)
-          ..where((Songs s) => s.id.isIn(ids)))
-        .get();
+    final List<Song> songs = await (db.select(
+      db.songs,
+    )..where((Songs s) => s.id.isIn(ids))).get();
     final List<SongView> views = await _attachArtists(songs);
     final Map<String, SongView> byId = <String, SongView>{
       for (final SongView v in views) v.id: v,
@@ -1119,21 +1200,20 @@ class LibraryService {
     String? startSongId,
     int limit = 200,
   }) async {
-    final SimpleSelectStatement<PlaylistSongs, PlaylistSong> query =
-        db.select(db.playlistSongs)
-      ..where((PlaylistSongs p) => p.playlistId.equals(playlistId));
+    final SimpleSelectStatement<PlaylistSongs, PlaylistSong> query = db.select(
+      db.playlistSongs,
+    )..where((PlaylistSongs p) => p.playlistId.equals(playlistId));
     if (startSongId != null) {
-      final PlaylistSong? start = await (db.select(db.playlistSongs)
-            ..where(
-              (PlaylistSongs p) =>
-                  p.playlistId.equals(playlistId) &
-                  p.songId.equals(startSongId),
-            ))
-          .getSingleOrNull();
+      final PlaylistSong? start =
+          await (db.select(db.playlistSongs)..where(
+                (PlaylistSongs p) =>
+                    p.playlistId.equals(playlistId) &
+                    p.songId.equals(startSongId),
+              ))
+              .getSingleOrNull();
       if (start != null) {
         query.where(
-          (PlaylistSongs p) =>
-              p.position.isBiggerOrEqualValue(start.position),
+          (PlaylistSongs p) => p.position.isBiggerOrEqualValue(start.position),
         );
       }
     }
@@ -1145,9 +1225,9 @@ class LibraryService {
     final List<PlaylistSong> rows = await query.get();
     if (rows.isEmpty) return const <SongView>[];
     final List<String> ids = rows.map((PlaylistSong r) => r.songId).toList();
-    final List<Song> songs = await (db.select(db.songs)
-          ..where((Songs s) => s.id.isIn(ids)))
-        .get();
+    final List<Song> songs = await (db.select(
+      db.songs,
+    )..where((Songs s) => s.id.isIn(ids))).get();
     final List<SongView> views = await _attachArtists(songs);
     final Map<String, SongView> byId = <String, SongView>{
       for (final SongView v in views) v.id: v,
@@ -1159,31 +1239,36 @@ class LibraryService {
   }
 
   Future<int> _nextPlaylistPosition(int playlistId) async {
-    final PlaylistSong? last = await (db.select(db.playlistSongs)
-          ..where((PlaylistSongs p) => p.playlistId.equals(playlistId))
-          ..orderBy(<OrderingTerm Function(PlaylistSongs)>[
-            (PlaylistSongs p) =>
-                OrderingTerm(expression: p.position, mode: OrderingMode.desc),
-          ])
-          ..limit(1))
-        .getSingleOrNull();
+    final PlaylistSong? last =
+        await (db.select(db.playlistSongs)
+              ..where((PlaylistSongs p) => p.playlistId.equals(playlistId))
+              ..orderBy(<OrderingTerm Function(PlaylistSongs)>[
+                (PlaylistSongs p) => OrderingTerm(
+                  expression: p.position,
+                  mode: OrderingMode.desc,
+                ),
+              ])
+              ..limit(1))
+            .getSingleOrNull();
     return (last?.position ?? -1) + 1;
   }
 
   Future<void> _renumberPlaylist(int playlistId) async {
-    final List<PlaylistSong> rows = await (db.select(db.playlistSongs)
-          ..where((PlaylistSongs p) => p.playlistId.equals(playlistId))
-          ..orderBy(<OrderingTerm Function(PlaylistSongs)>[
-            (PlaylistSongs p) => OrderingTerm(expression: p.position),
-          ]))
-        .get();
+    final List<PlaylistSong> rows =
+        await (db.select(db.playlistSongs)
+              ..where((PlaylistSongs p) => p.playlistId.equals(playlistId))
+              ..orderBy(<OrderingTerm Function(PlaylistSongs)>[
+                (PlaylistSongs p) => OrderingTerm(expression: p.position),
+              ]))
+            .get();
     for (int i = 0; i < rows.length; i++) {
       if (rows[i].position != i) {
         await (db.update(db.playlistSongs)..where(
-          (PlaylistSongs p) =>
-              p.playlistId.equals(playlistId) &
-              p.songId.equals(rows[i].songId),
-        )).write(PlaylistSongsCompanion(position: Value<int>(i)));
+              (PlaylistSongs p) =>
+                  p.playlistId.equals(playlistId) &
+                  p.songId.equals(rows[i].songId),
+            ))
+            .write(PlaylistSongsCompanion(position: Value<int>(i)));
       }
     }
   }
@@ -1239,22 +1324,19 @@ class LibraryService {
               playTimeMs: playTimeMs,
             ),
           );
-      final Song? song = await (db.select(db.songs)
-            ..where((Songs s) => s.id.equals(songId)))
-          .getSingleOrNull();
+      final Song? song = await (db.select(
+        db.songs,
+      )..where((Songs s) => s.id.equals(songId))).getSingleOrNull();
       if (song != null) {
-        await (db.update(db.songs)..where((Songs s) => s.id.equals(songId)))
-            .write(
-              SongsCompanion(
-                totalPlayTimeMs: Value<int>(
-                  song.totalPlayTimeMs + playTimeMs,
-                ),
-              ),
-            );
+        await (db.update(
+          db.songs,
+        )..where((Songs s) => s.id.equals(songId))).write(
+          SongsCompanion(
+            totalPlayTimeMs: Value<int>(song.totalPlayTimeMs + playTimeMs),
+          ),
+        );
       }
-      final int count = await _count(
-        'SELECT COUNT(*) AS c FROM play_events',
-      );
+      final int count = await _count('SELECT COUNT(*) AS c FROM play_events');
       if (count > kMaxPlayEvents) {
         final int excess = count - kMaxPlayEvents;
         await db.customStatement(
@@ -1272,15 +1354,15 @@ class LibraryService {
     PlayHistoryEntry? after,
     int limit = kPageSize,
   }) async {
-    final SimpleSelectStatement<PlayEvents, PlayEvent> query =
-        db.select(db.playEvents);
+    final SimpleSelectStatement<PlayEvents, PlayEvent> query = db.select(
+      db.playEvents,
+    );
     if (after != null) {
       final PlayEvent e = after.event;
       query.where(
         (PlayEvents t) =>
             t.timestamp.isSmallerThanValue(e.timestamp) |
-            (t.timestamp.equals(e.timestamp) &
-                t.id.isSmallerThanValue(e.id)),
+            (t.timestamp.equals(e.timestamp) & t.id.isSmallerThanValue(e.id)),
       );
     }
     query
@@ -1297,9 +1379,9 @@ class LibraryService {
         .map((PlayEvent e) => e.songId)
         .toSet()
         .toList(growable: false);
-    final List<Song> songs = await (db.select(db.songs)
-          ..where((Songs s) => s.id.isIn(ids)))
-        .get();
+    final List<Song> songs = await (db.select(
+      db.songs,
+    )..where((Songs s) => s.id.isIn(ids))).get();
     final List<SongView> views = await _attachArtists(songs);
     final Map<String, SongView> byId = <String, SongView>{
       for (final SongView v in views) v.id: v,
@@ -1308,6 +1390,36 @@ class LibraryService {
       for (final PlayEvent event in events)
         if (byId[event.songId] != null)
           PlayHistoryEntry(event: event, song: byId[event.songId]!),
+    ];
+  }
+
+  /// Lagu yang baru diputar, tanpa duplikat: tiap lagu tampil sekali,
+  /// di posisi putaran terakhirnya (PRD B6.1, seksi "Baru diputar"
+  /// beranda P4). Urutan: putaran terakhir terbaru dulu.
+  Future<List<SongView>> recentPlayedSongs({int limit = 10}) async {
+    final List<QueryRow> rows = await db
+        .customSelect(
+          'SELECT song_id AS id FROM play_events '
+          'GROUP BY song_id ORDER BY MAX(timestamp) DESC, MAX(id) DESC '
+          'LIMIT ?',
+          variables: <Variable<Object>>[Variable<int>(limit)],
+          readsFrom: <TableInfo<Table, Object?>>{db.playEvents},
+        )
+        .get();
+    final List<String> ids = rows
+        .map((QueryRow r) => r.read<String>('id'))
+        .toList(growable: false);
+    if (ids.isEmpty) return const <SongView>[];
+    final List<Song> songs = await (db.select(
+      db.songs,
+    )..where((Songs s) => s.id.isIn(ids))).get();
+    final List<SongView> views = await _attachArtists(songs);
+    final Map<String, SongView> byId = <String, SongView>{
+      for (final SongView v in views) v.id: v,
+    };
+    return <SongView>[
+      for (final String id in ids)
+        if (byId[id] != null) byId[id]!,
     ];
   }
 
@@ -1368,7 +1480,10 @@ class LibraryService {
     return results;
   }
 
-  Future<LocalSearchResults> _searchFts(String ftsQuery, {required int limit}) async {
+  Future<LocalSearchResults> _searchFts(
+    String ftsQuery, {
+    required int limit,
+  }) async {
     final LibrarySearch fts = db.librarySearch;
     final List<String> songIds = await _ftsRefIds(fts, ftsQuery, 'song', limit);
     final List<String> artistIds = await _ftsRefIds(
@@ -1381,9 +1496,9 @@ class LibraryService {
     if (songIds.isEmpty) {
       songs = const <SongView>[];
     } else {
-      final List<Song> rows = await (db.select(db.songs)
-            ..where((Songs s) => s.id.isIn(songIds)))
-          .get();
+      final List<Song> rows = await (db.select(
+        db.songs,
+      )..where((Songs s) => s.id.isIn(songIds))).get();
       final List<SongView> views = await _attachArtists(rows);
       final Map<String, SongView> byId = <String, SongView>{
         for (final SongView v in views) v.id: v,
@@ -1398,9 +1513,9 @@ class LibraryService {
     if (artistIds.isEmpty) {
       artists = const <Artist>[];
     } else {
-      final List<Artist> rows = await (db.select(db.artists)
-            ..where((Artists a) => a.id.isIn(artistIds)))
-          .get();
+      final List<Artist> rows = await (db.select(
+        db.artists,
+      )..where((Artists a) => a.id.isIn(artistIds))).get();
       final Map<String, Artist> byId = <String, Artist>{
         for (final Artist a in rows) a.id: a,
       };
@@ -1418,12 +1533,13 @@ class LibraryService {
     String kind,
     int limit,
   ) async {
-    final List<TypedResult> rows = await (db.selectOnly(fts)
-          ..addColumns(<Expression<Object>>[fts.refId])
-          ..where(fts.match(ftsQuery) & fts.kind.equals(kind))
-          ..orderBy(<OrderingTerm>[OrderingTerm(expression: fts.rank)])
-          ..limit(limit))
-        .get();
+    final List<TypedResult> rows =
+        await (db.selectOnly(fts)
+              ..addColumns(<Expression<Object>>[fts.refId])
+              ..where(fts.match(ftsQuery) & fts.kind.equals(kind))
+              ..orderBy(<OrderingTerm>[OrderingTerm(expression: fts.rank)])
+              ..limit(limit))
+            .get();
     return rows
         .map((TypedResult r) => r.read(fts.refId))
         .whereType<String>()
@@ -1456,6 +1572,10 @@ class LibraryService {
   /// Simpan query pencarian (query sama tidak diduplikasi: baris lama
   /// dihapus lalu disisip baru supaya naik ke atas daftar). Daftar
   /// dipangkas ke [kMaxSearchHistory] query.
+  ///
+  /// Dedup tidak membedakan kapitalisasi (PRD B1.3: "Queen" dan
+  /// "queen" adalah query yang sama); ejaan yang tersimpan adalah
+  /// ejaan terakhir yang diketik pengguna.
   Future<void> addSearchQuery(String query) async {
     final String trimmed = query.trim();
     if (trimmed.isEmpty) return;
@@ -1463,8 +1583,11 @@ class LibraryService {
     await db.transaction(() async {
       // Hapus + sisip (bukan update): UPDATE mempertahankan rowid lama,
       // dan rowid adalah tiebreak urutan saat cap waktu detiknya sama.
-      await (db.delete(db.searchHistory)
-            ..where((SearchHistory t) => t.query.equals(trimmed)))
+      // Perbandingan memakai huruf kecil supaya "Queen" dan "queen"
+      // dianggap satu query (PRD B1.3).
+      await (db.delete(db.searchHistory)..where(
+            (SearchHistory t) => t.query.lower().equals(trimmed.toLowerCase()),
+          ))
           .go();
       await db
           .into(db.searchHistory)
@@ -1500,11 +1623,42 @@ class LibraryService {
     return rows.map((QueryRow r) => r.read<String>('query')).toList();
   }
 
+  /// Query riwayat yang diawali [prefix] (tidak membedakan
+  /// kapitalisasi), terbaru dulu. Dipakai saran pencarian lokal saat
+  /// mengetik (PRD B1.2: saran offline berasal dari riwayat).
+  Future<List<String>> searchHistoryMatching(
+    String prefix, {
+    int limit = 8,
+  }) async {
+    final String trimmed = prefix.trim();
+    if (trimmed.isEmpty) return const <String>[];
+    // Karakter khusus LIKE di-escape supaya ketikan pengguna dibaca
+    // harfiah ("%"/"_" di query tidak menjadi wildcard).
+    final String escaped = trimmed
+        .toLowerCase()
+        .replaceAll(r'\', r'\\')
+        .replaceAll('%', r'\%')
+        .replaceAll('_', r'\_');
+    final List<QueryRow> rows = await db
+        .customSelect(
+          'SELECT query FROM search_history '
+          "WHERE lower(query) LIKE ? ESCAPE '\\' "
+          'ORDER BY timestamp DESC, rowid DESC LIMIT ?',
+          variables: <Variable<Object>>[
+            Variable<String>('$escaped%'),
+            Variable<int>(limit),
+          ],
+          readsFrom: <TableInfo<Table, Object?>>{db.searchHistory},
+        )
+        .get();
+    return rows.map((QueryRow r) => r.read<String>('query')).toList();
+  }
+
   /// Hapus satu query dari riwayat pencarian.
   Future<void> deleteSearchQuery(String query) async {
-    await (db.delete(db.searchHistory)
-          ..where((SearchHistory t) => t.query.equals(query)))
-        .go();
+    await (db.delete(
+      db.searchHistory,
+    )..where((SearchHistory t) => t.query.equals(query))).go();
   }
 
   /// Hapus seluruh riwayat pencarian.

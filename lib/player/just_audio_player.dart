@@ -303,6 +303,14 @@ class JustAudioPlayerPort implements AudioPlayerPort {
       unawaited(_onCompleted());
       return;
     }
+    if (track.isLocal) {
+      // Lagu lokal (file di perangkat, P5) TIDAK BOLEH memicu resolve
+      // jaringan: tidak ada URL yang bisa di-resolve ulang, file-nya ya
+      // file-nya. Langsung lewati ke lagu berikutnya tanpa menyentuh
+      // resolver sama sekali.
+      unawaited(_failCurrentTrack(null));
+      return;
+    }
     unawaited(_reResolveLoop(track));
   }
 
@@ -349,14 +357,22 @@ class JustAudioPlayerPort implements AudioPlayerPort {
     }
   }
 
+  /// Petakan penyebab kegagalan resolve ke jenis yang tampil ke pengguna.
+  /// Timeout dibedakan dari putusnya jaringan: pesannya berbeda ("internet
+  /// lambat, coba lagi" vs "tidak ada internet").
+  static PlaybackFailureKind _kindOf(ExtractorException? cause) {
+    if (cause == null) return PlaybackFailureKind.unplayable;
+    if (cause.isTimeout) return PlaybackFailureKind.timeout;
+    if (cause.isNetworkError) return PlaybackFailureKind.network;
+    return PlaybackFailureKind.unplayable;
+  }
+
   /// Lagu gagal total setelah re-resolve habis: laporkan jujur, lalu
   /// coba lagu berikutnya (lewati yang tidak bisa diputar).
   Future<void> _failCurrentTrack(ExtractorException? cause) async {
     final Track? track = _queue.current;
     if (track == null || _disposed) return;
-    final PlaybackFailureKind kind = cause?.isNetworkError == true
-        ? PlaybackFailureKind.network
-        : PlaybackFailureKind.unplayable;
+    final PlaybackFailureKind kind = _kindOf(cause);
     // Indeks berikutnya mengabaikan mode ulangi satu: lagu yang baru
     // gagal total tidak dicoba lagi di rantai ini.
     final int current = _queue.currentIndex;
@@ -549,9 +565,7 @@ class JustAudioPlayerPort implements AudioPlayerPort {
             status: PlayerStatus.error,
             playing: false,
             lastError: PlaybackFailure(
-              kind: e.isNetworkError
-                  ? PlaybackFailureKind.network
-                  : PlaybackFailureKind.unplayable,
+              kind: _kindOf(e),
               trackTitle: track.title,
             ),
           ),

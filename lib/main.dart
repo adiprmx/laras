@@ -7,7 +7,9 @@ import 'package:laras/features/home/home_screen.dart';
 import 'package:laras/features/library/library_screen.dart';
 import 'package:laras/features/player/mini_player.dart';
 import 'package:laras/features/player/player_screen.dart';
+import 'package:laras/features/search/search_scope.dart';
 import 'package:laras/features/search/search_screen.dart';
+import 'package:laras/features/search/search_service.dart';
 import 'package:laras/features/settings/settings_screen.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/player/player.dart';
@@ -21,12 +23,18 @@ Future<void> main() async {
   // dan tombol favorit disembunyikan — pemutaran tidak ikut mati.
   LibraryService? libraryService;
   bool libraryFailed = false;
+  SearchService? searchService;
   try {
     final LarasDatabase db = await openLarasDatabase();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     libraryService = LibraryService(
       db,
       sortPrefs: LibrarySortPrefs(prefs: prefs),
+    );
+    searchService = SearchService(
+      api: InnertubeSearchApi(),
+      library: libraryService,
+      prefs: prefs,
     );
     // Pencatat riwayat hidup selama app: subscription-nya dipegang oleh
     // stream port, jadi variabel lokal boleh lepas sesudah start.
@@ -38,12 +46,16 @@ Future<void> main() async {
   } catch (error, stackTrace) {
     debugPrint('Laras: database gagal dibuka: $error\n$stackTrace');
     libraryFailed = true;
+    // Pencarian online tetap jalan tanpa library (tanpa hasil lokal dan
+    // tanpa riwayat).
+    searchService = SearchService(api: InnertubeSearchApi());
   }
   runApp(
     LarasApp(
       playerService: playerService,
       libraryService: libraryService,
       libraryFailed: libraryFailed,
+      searchService: searchService,
     ),
   );
 }
@@ -62,11 +74,13 @@ class LarasApp extends StatelessWidget {
     this.playerService,
     this.libraryService,
     this.libraryFailed = false,
+    this.searchService,
   });
 
   final PlayerService? playerService;
   final LibraryService? libraryService;
   final bool libraryFailed;
+  final SearchService? searchService;
 
   @override
   Widget build(BuildContext context) {
@@ -91,6 +105,7 @@ class LarasApp extends StatelessWidget {
       failed: libraryFailed,
       child: app,
     );
+    app = SearchScope(service: searchService, child: app);
     if (service == null) return app;
     return PlayerScope(service: service, child: app);
   }
@@ -154,15 +169,19 @@ class _HomeShellState extends State<HomeShell> {
                 duration: snap.duration ?? track.duration,
                 isFavorite: isFavorite,
                 onToggleFavorite: onToggleFavorite,
+                // State error diteruskan apa adanya: mini-player
+                // menampilkan pesan + tombol coba lagi (P0).
+                failure: snap.status == PlayerStatus.error
+                    ? snap.lastError
+                    : null,
                 onTap: () {
                   Navigator.of(context).push(
                     PageRouteBuilder<void>(
-                      pageBuilder:
-                          (
-                            BuildContext context,
-                            Animation<double> animation,
-                            Animation<double> secondaryAnimation,
-                          ) => PlayerScreen(port: port),
+                      pageBuilder: (
+                        BuildContext context,
+                        Animation<double> animation,
+                        Animation<double> secondaryAnimation,
+                      ) => PlayerScreen(port: port),
                       transitionsBuilder:
                           (
                             BuildContext context,
@@ -170,18 +189,16 @@ class _HomeShellState extends State<HomeShell> {
                             Animation<double> secondaryAnimation,
                             Widget child,
                           ) {
-                            final CurvedAnimation curved =
-                                CurvedAnimation(
-                                  parent: animation,
-                                  curve: Curves.easeOutCubic,
-                                  reverseCurve: Curves.easeInCubic,
-                                );
+                            final CurvedAnimation curved = CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeOutCubic,
+                              reverseCurve: Curves.easeInCubic,
+                            );
                             return SlideTransition(
-                              position:
-                                  Tween<Offset>(
-                                    begin: const Offset(0, 1),
-                                    end: Offset.zero,
-                                  ).animate(curved),
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 1),
+                                end: Offset.zero,
+                              ).animate(curved),
                               child: FadeTransition(
                                 opacity: curved,
                                 child: child,
@@ -215,6 +232,8 @@ class _HomeShellState extends State<HomeShell> {
                     await library.upsertSong(
                       track.toSongsCompanion(),
                       artistNames: track.artistNames,
+                      artistChannelIds: track.artistChannelIds,
+                      album: track.albumCompanion,
                     );
                     await library.toggleLiked(track.videoId);
                   },

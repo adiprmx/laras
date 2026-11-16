@@ -119,6 +119,8 @@ class PlayHistoryRecorder {
           .upsertSong(
             track.toSongsCompanion(),
             artistNames: track.artistNames,
+            artistChannelIds: track.artistChannelIds,
+            album: track.albumCompanion,
           )
           .catchError((Object error) {
             debugPrint('PlayHistoryRecorder: gagal menyimpan lagu: $error');

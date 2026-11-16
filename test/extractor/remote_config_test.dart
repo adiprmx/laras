@@ -136,8 +136,36 @@ void main() {
       expect(config.clients.first.name, 'WEB_REMIX');
       expect(config.clients.first.version, '1.20261110.04.00');
       expect(config.clients[1].name, 'MWEB');
+      expect(config.clients[2].name, 'ANDROID_VR');
+      expect(config.clients[2].requiresScript, isFalse);
       expect(config.playerHashes['fad7e4e9'], 20767);
       expect(config.canaryVideoIds, contains('hhn-nGSuenM'));
+    });
+
+    test('requiresScript ter-parse; hilang berarti true (P0)', () {
+      final RemotePlayerConfig? config = RemotePlayerConfig.tryParse(
+        <String, dynamic>{
+          'clients': <dynamic>[
+            <String, dynamic>{
+              'name': 'WEB_REMIX',
+              'version': '1.0',
+              'userAgent': 'x',
+              'clientId': '67',
+            },
+            <String, dynamic>{
+              'name': 'ANDROID_VR',
+              'version': '1.65.10',
+              'userAgent': 'y',
+              'clientId': '14',
+              'requiresScript': false,
+            },
+          ],
+        },
+        fetchedAt: DateTime.now(),
+      );
+      expect(config, isNotNull);
+      expect(config!.clients[0].requiresScript, isTrue);
+      expect(config.clients[1].requiresScript, isFalse);
     });
   });
 

@@ -13,7 +13,9 @@ class Track {
     required this.videoId,
     required this.title,
     this.artist,
+    this.artistChannelId,
     this.album,
+    this.albumBrowseId,
     this.duration,
     this.artUri,
     this.localPath,
@@ -24,7 +26,17 @@ class Track {
 
   final String title;
   final String? artist;
+
+  /// channelId YouTube Music artis utama, bila diketahui dari hasil
+  /// pencarian/browse (P4). Dipakai pencatat riwayat untuk menyimpan
+  /// artis dengan id aslinya, bukan id semu lokal.
+  final String? artistChannelId;
   final String? album;
+
+  /// browseId album (awalan `MPRE`), bila diketahui dari hasil
+  /// pencarian/browse (P4). Dipakai pencatat riwayat untuk mencatat
+  /// album lagu.
+  final String? albumBrowseId;
 
   /// Durasi dari metadata, bila diketahui sebelum lagu dimuat.
   final Duration? duration;

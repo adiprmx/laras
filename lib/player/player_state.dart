@@ -43,11 +43,19 @@ enum PlayerStatus {
 }
 
 /// Penyebab kegagalan putar, dalam bahasa yang bisa dipetakan ke pesan ARB.
-/// Klasifikasi lengkap 6 penyebab menyusul di P6; dua penyebab ini cukup
-/// untuk membedakan "internet putus" dari "lagu tidak bisa diputar".
+/// Klasifikasi lengkap 6 penyebab menyusul di P6; tiga penyebab ini cukup
+/// untuk membedakan "internet putus" dari "internet lambat" dan dari
+/// "lagu tidak bisa diputar". `timeout` ditambahkan di P0: di jaringan HP
+/// yang lambat tapi hidup, request yang sah bisa mati karena timeout, dan
+/// pengguna perlu tahu bahwa mencoba lagi (bukan memeriksa WiFi) adalah
+/// langkah yang benar.
 enum PlaybackFailureKind {
   /// Jaringan perangkat bermasalah (tidak ada internet, koneksi putus).
   network,
+
+  /// Koneksi ada tapi terlalu lambat: request tidak selesai sebelum batas
+  /// waktu. Berbeda dari [network]: WiFi tersambung, hanya lambat.
+  timeout,
 
   /// Lagu tidak bisa diputar walau jaringan ada.
   unplayable,
