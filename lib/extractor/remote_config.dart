@@ -26,11 +26,14 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'client_definitions.dart';
+import 'errors.dart';
+import 'response_limits.dart';
 
 /// URL asset config di GitHub Releases.
 const String kRemoteConfigUrl =
@@ -55,6 +58,18 @@ const String kRemoteConfigFallbackUrl =
 /// Kunci cache SharedPreferences.
 const String kRemoteConfigCacheKey = 'laras.remote_player_config';
 const String kRemoteConfigFetchedAtKey = 'laras.remote_player_config_fetched_at';
+
+/// Pemetaan hash player bawaan (nilai hasil probe 15 Nov 2026).
+///
+/// Satu-satunya sumber kebenaran untuk nilai bawaan: dipakai
+/// [RemotePlayerConfig.defaults] DAN sebagai allowlist cadangan
+/// [PlayerScriptLoader] bila config remote tidak membawa hash
+/// (R1-M2). Hash `fad7e4e9` dipakai dua varian player (non-tcl sts 20767
+/// yang bisa diekstrak + tcl sts 20767001 yang tidak bisa); gerbang hash
+/// hanya memeriksa hash-nya — varian yang dieksekusi selalu non-tcl
+/// karena varian tcl gagal di ekstraksi sebelum mencapai solver
+/// (fallback P0 di loader).
+const Map<String, int> kBuiltinPlayerHashes = <String, int>{'fad7e4e9': 20767};
 
 /// Config player yang sudah di-parse (dari remote atau bawaan).
 class RemotePlayerConfig {
@@ -81,10 +96,29 @@ class RemotePlayerConfig {
   /// Benar bila config berasal dari remote (bukan nilai bawaan).
   final bool isRemote;
 
+  /// Batas ukuran config remote (R1-L1): config adalah data dari jaringan,
+  /// jadi ukurannya dibatasi supaya config yang dipalsukan tidak bisa
+  /// memaksa app mencoba ribuan client (tiap percobaan 10 detik) atau
+  /// menyimpan peta raksasa. Pelanggaran batas membuat seluruh config
+  /// ditolak (tryParse mengembalikan null, pemanggil memakai cache atau
+  /// bawaan) — kecuali daftar kanari yang dipotong ke batasnya.
+  static const int maxClients = 10;
+
+  /// Panjang maksimum tiap string client (nama, versi, userAgent,
+  /// clientId). Nilai yang sah jauh di bawah ini (userAgent terpanjang
+  /// ~130 karakter).
+  static const int maxClientStringLength = 200;
+
+  /// Jumlah maksimum entri playerHashes.
+  static const int maxPlayerHashes = 100;
+
+  /// Jumlah maksimum ID kanari yang disimpan (sisanya diabaikan).
+  static const int maxCanaryIds = 50;
+
   /// Config bawaan (nilai hasil probe 15 Nov 2026).
   factory RemotePlayerConfig.defaults() => RemotePlayerConfig(
     clients: kDefaultClientFallbackOrder,
-    playerHashes: const <String, int>{'fad7e4e9': 20767},
+    playerHashes: kBuiltinPlayerHashes,
     canaryVideoIds: kCanarySongs.map((s) => s.videoId).toList(growable: false),
     fetchedAt: DateTime.now(),
     isRemote: false,
@@ -98,7 +132,11 @@ class RemotePlayerConfig {
   }) {
     try {
       final List<dynamic>? clientsJson = json['clients'] as List<dynamic>?;
-      if (clientsJson == null || clientsJson.isEmpty) return null;
+      if (clientsJson == null ||
+          clientsJson.isEmpty ||
+          clientsJson.length > maxClients) {
+        return null;
+      }
       final List<ClientDefinition> clients = <ClientDefinition>[];
       for (final dynamic raw in clientsJson) {
         if (raw is! Map<String, dynamic>) return null;
@@ -107,6 +145,12 @@ class RemotePlayerConfig {
         final String? userAgent = raw['userAgent'] as String?;
         final String? clientId = raw['clientId'] as String?;
         if (name == null || version == null || userAgent == null || clientId == null) {
+          return null;
+        }
+        if (name.length > maxClientStringLength ||
+            version.length > maxClientStringLength ||
+            userAgent.length > maxClientStringLength ||
+            clientId.length > maxClientStringLength) {
           return null;
         }
         // Opsional: false untuk client URL-langsung tanpa sts
@@ -130,6 +174,7 @@ class RemotePlayerConfig {
       final Map<String, dynamic>? hashesJson =
           json['playerHashes'] as Map<String, dynamic>?;
       if (hashesJson != null) {
+        if (hashesJson.length > maxPlayerHashes) return null;
         for (final MapEntry<String, dynamic> e in hashesJson.entries) {
           final Object? value = e.value;
           if (value is Map<String, dynamic>) {
@@ -144,6 +189,7 @@ class RemotePlayerConfig {
       final List<dynamic>? canaryJson = json['canaryVideoIds'] as List<dynamic>?;
       if (canaryJson != null) {
         for (final dynamic v in canaryJson) {
+          if (canaryIds.length >= maxCanaryIds) break;
           if (v is String && v.length == 11) canaryIds.add(v);
         }
       }
@@ -189,8 +235,8 @@ class RemoteConfigLoader {
   /// Jeda minimum antar fetch (rate limit), kecuali dipaksa.
   static const Duration minFetchInterval = Duration(minutes: 5);
 
-  /// Batas ukuran respons: 4 MB.
-  static const int maxBytes = 4 * 1024 * 1024;
+  /// Batas ukuran respons: 4 MB (ResponseLimits.remoteConfigBytes),
+  /// ditegakkan saat streaming di [_fetchOne] (R1-M3).
 
   RemotePlayerConfig? _current;
   Future<RemotePlayerConfig>? _inFlight;
@@ -269,22 +315,58 @@ class RemoteConfigLoader {
   }
 
   Future<RemotePlayerConfig> _fetchOne(String url) async {
-    final Response<dynamic> response = await _dio.get<dynamic>(
-      url,
-      options: Options(
-        headers: <String, String>{'Accept': 'application/json'},
-      ),
-    );
-    final dynamic data = response.data;
-    final Map<String, dynamic>? json = data is Map<String, dynamic>
-        ? data
-        : data is String
-        ? jsonDecode(data) as Map<String, dynamic>?
-        : null;
-    if (json == null) throw const FormatException('config bukan JSON');
-    // Batas ukuran: serialisasi ulang tidak boleh melebihi 4 MB.
+    final ResponseSizeCap cap =
+        ResponseSizeCap(ResponseLimits.remoteConfigBytes);
+    try {
+      final Response<ResponseBody> response = await _dio.get<ResponseBody>(
+        url,
+        options: Options(
+          responseType: ResponseType.stream,
+          headers: <String, String>{'Accept': 'application/json'},
+        ),
+        cancelToken: cap.cancelToken,
+        onReceiveProgress: cap.onReceiveProgress,
+      );
+      // R1-M3: batas ukuran ditegakkan saat streaming, bukan setelah
+      // seluruh respons terunduh + ter-decode seperti sebelumnya.
+      checkContentLength(response, ResponseLimits.remoteConfigBytes);
+      final Uint8List bytes = await readCappedResponseBody(
+        response.data!,
+        requestOptions: response.requestOptions,
+        maxBytes: ResponseLimits.remoteConfigBytes,
+        chunkTimeout: const Duration(seconds: 5),
+      );
+      return await _parseAndCache(bytes);
+    } on ExtractorException {
+      // Batas ukuran (cap streaming / Content-Length): config tidak
+      // valid -> fallback cache/bawaan. Dipetakan ke FormatException
+      // karena _fetchAndStore hanya menangkap DioException/FormatException;
+      // ExtractorException di sini akan menjadi unhandled async error
+      // lewat unawaited(_refresh(...)).
+      throw const FormatException('config melebihi batas ukuran');
+    } on DioException {
+      // Pembatalan oleh cap == respons raksasa -> FormatException juga.
+      if (cap.exceeded) {
+        throw const FormatException('config melebihi batas ukuran');
+      }
+      rethrow;
+    }
+  }
+
+  Future<RemotePlayerConfig> _parseAndCache(Uint8List bytes) async {
+    final dynamic decoded = jsonDecode(utf8.decode(bytes));
+    // R1-L1: cek `is`, bukan cast `as` — cast melempar TypeError bila
+    // JSON ter-decode menjadi List, dan TypeError tidak ditangkap
+    // _fetchAndStore (hanya DioException/FormatException) sehingga bisa
+    // menjadi unhandled async error lewat unawaited(_refresh(...)).
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('config bukan objek JSON');
+    }
+    final Map<String, dynamic> json = decoded;
+    // Batas ukuran (sabuk kedua): serialisasi ulang tidak boleh melebihi
+    // 4 MB; nilainya juga yang disimpan ke cache disk.
     final String encoded = jsonEncode(json);
-    if (encoded.length > maxBytes) {
+    if (encoded.length > ResponseLimits.remoteConfigBytes) {
       throw const FormatException('config melebihi 4 MB');
     }
     final DateTime fetchedAt = DateTime.now();
@@ -306,10 +388,10 @@ class RemoteConfigLoader {
       final String? raw = _prefs.getString(kRemoteConfigCacheKey);
       final String? fetchedAtRaw = _prefs.getString(kRemoteConfigFetchedAtKey);
       if (raw == null || fetchedAtRaw == null) return null;
-      final Map<String, dynamic> json =
-          jsonDecode(raw) as Map<String, dynamic>;
+      final dynamic decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
       return RemotePlayerConfig.tryParse(
-        json,
+        decoded,
         fetchedAt: DateTime.parse(fetchedAtRaw),
       );
     } catch (_) {

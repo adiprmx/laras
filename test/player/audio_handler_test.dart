@@ -41,10 +41,27 @@ void main() {
     }
 
     setUp(() {
+      // Id 11 karakter (format videoId YouTube): handler memvalidasi id
+      // perintah MediaSession (R1-L4), jadi tes memakai id yang sah.
       tracks = <Track>[
-        testTrack('a', duration: const Duration(minutes: 3)),
-        testTrack('b', duration: const Duration(minutes: 4)),
-        testTrack('c', duration: const Duration(minutes: 5)),
+        testTrack(
+          'aaaaaaaaaaa',
+          title: 'Lagu a',
+          artist: 'Artis a',
+          duration: const Duration(minutes: 3),
+        ),
+        testTrack(
+          'bbbbbbbbbbb',
+          title: 'Lagu b',
+          artist: 'Artis b',
+          duration: const Duration(minutes: 4),
+        ),
+        testTrack(
+          'ccccccccccc',
+          title: 'Lagu c',
+          artist: 'Artis c',
+          duration: const Duration(minutes: 5),
+        ),
       ];
       port = FakeAudioPlayerPort();
       handler = LarasAudioHandler(player: port);
@@ -78,13 +95,13 @@ void main() {
       await settle();
       final MediaItem? item = handler.mediaItem.value;
       expect(item, isNotNull);
-      expect(item!.id, 'b');
+      expect(item!.id, 'bbbbbbbbbbb');
       expect(item.title, 'Lagu b');
       expect(item.artist, 'Artis b');
       expect(item.duration, const Duration(minutes: 4));
       expect(
         handler.queue.value.map((m) => m.id).toList(),
-        <String>['a', 'b', 'c'],
+        <String>['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc'],
       );
       final PlaybackState state = handler.playbackState.value;
       expect(state.playing, isTrue);
@@ -210,7 +227,9 @@ void main() {
     test('playMediaItem lagu yang sudah ada melompat ke lagu itu', () async {
       port.emitSnapshot(snapshotWith(current: tracks[0]));
       await settle();
-      await handler.playMediaItem(const MediaItem(id: 'c', title: 'Lagu c'));
+      await handler.playMediaItem(
+        const MediaItem(id: 'ccccccccccc', title: 'Lagu c'),
+      );
       expect(port.skipToIndexCalls, <int>[2]);
       expect(port.playCalls, 1);
     });
@@ -219,10 +238,14 @@ void main() {
       port.emitSnapshot(snapshotWith(current: tracks[0]));
       await settle();
       await handler.playMediaItem(
-        const MediaItem(id: 'z', title: 'Lagu Baru', artist: 'Artis Baru'),
+        const MediaItem(
+          id: 'zzzzzzzzzzz',
+          title: 'Lagu Baru',
+          artist: 'Artis Baru',
+        ),
       );
       expect(port.setQueueCalls, hasLength(1));
-      expect(port.setQueueCalls.single.$1.single.videoId, 'z');
+      expect(port.setQueueCalls.single.$1.single.videoId, 'zzzzzzzzzzz');
       expect(port.setQueueCalls.single.$1.single.title, 'Lagu Baru');
       expect(port.setQueueCalls.single.$3, isTrue);
     });
@@ -230,22 +253,88 @@ void main() {
     test('add/remove/update antrean diteruskan', () async {
       port.emitSnapshot(snapshotWith(current: tracks[0]));
       await settle();
-      await handler.addQueueItem(const MediaItem(id: 'd', title: 'Lagu d'));
-      await handler.removeQueueItem(const MediaItem(id: 'b', title: 'Lagu b'));
-      expect(port.addToQueueCalls.single.videoId, 'd');
+      await handler.addQueueItem(
+        const MediaItem(id: 'ddddddddddd', title: 'Lagu d'),
+      );
+      await handler.removeQueueItem(
+        const MediaItem(id: 'bbbbbbbbbbb', title: 'Lagu b'),
+      );
+      expect(port.addToQueueCalls.single.videoId, 'ddddddddddd');
       expect(port.removeFromQueueCalls, <int>[1]);
       await handler.updateQueue(<MediaItem>[
-        const MediaItem(id: 'c', title: 'Lagu c'),
-        const MediaItem(id: 'a', title: 'Lagu a'),
+        const MediaItem(id: 'ccccccccccc', title: 'Lagu c'),
+        const MediaItem(id: 'aaaaaaaaaaa', title: 'Lagu a'),
       ]);
       expect(port.setQueueCalls.single.$1.map((t) => t.videoId).toList(),
-          <String>['c', 'a']);
+          <String>['ccccccccccc', 'aaaaaaaaaaa']);
       expect(port.setQueueCalls.single.$2, 1);
     });
 
     test('skipToQueueItem diteruskan', () async {
       await handler.skipToQueueItem(2);
       expect(port.skipToIndexCalls, <int>[2]);
+    });
+
+    test('playMediaItem id tidak valid diabaikan', () async {
+      port.emitSnapshot(snapshotWith(current: tracks[0]));
+      await settle();
+      await handler.playMediaItem(
+        const MediaItem(id: 'terlalu-pendek', title: 'Jahat'),
+      );
+      await handler.playMediaItem(
+        const MediaItem(id: 'aaaaaaaaaa!', title: 'Jahat'),
+      );
+      await handler.playMediaItem(
+        const MediaItem(id: '../../etc/passwd', title: 'Jahat'),
+      );
+      expect(port.skipToIndexCalls, isEmpty);
+      expect(port.setQueueCalls, isEmpty);
+      expect(port.playCalls, 0);
+    });
+
+    test('add/insert antrean id tidak valid diabaikan', () async {
+      await handler.addQueueItem(
+        const MediaItem(id: 'pendek', title: 'Jahat'),
+      );
+      await handler.insertQueueItem(
+        0,
+        const MediaItem(id: 'aaaaaaaaaaaa', title: 'Jahat'),
+      );
+      expect(port.addToQueueCalls, isEmpty);
+      expect(port.insertInQueueCalls, isEmpty);
+    });
+
+    test('updateQueue menyaring id tidak valid', () async {
+      port.emitSnapshot(snapshotWith(current: tracks[0]));
+      await settle();
+      await handler.updateQueue(<MediaItem>[
+        const MediaItem(id: 'ccccccccccc', title: 'Lagu c'),
+        const MediaItem(id: 'tidak-valid!', title: 'Jahat'),
+        const MediaItem(id: 'aaaaaaaaaaa', title: 'Lagu a'),
+      ]);
+      expect(port.setQueueCalls.single.$1.map((t) => t.videoId).toList(),
+          <String>['ccccccccccc', 'aaaaaaaaaaa']);
+    });
+
+    test('updateQueue semua tidak valid tidak menghapus antrean', () async {
+      port.emitSnapshot(snapshotWith(current: tracks[0]));
+      await settle();
+      await handler.updateQueue(<MediaItem>[
+        const MediaItem(id: 'x', title: 'Jahat'),
+      ]);
+      expect(port.setQueueCalls, isEmpty);
+    });
+
+    test('setSpeed dijepit ke 0,5-2,0', () async {
+      await handler.setSpeed(0.1);
+      await handler.setSpeed(5.0);
+      await handler.setSpeed(1.5);
+      expect(port.setSpeedCalls, <double>[0.5, 2.0, 1.5]);
+    });
+
+    test('seek negatif dijepit ke nol', () async {
+      await handler.seek(const Duration(seconds: -5));
+      expect(port.seekCalls, <Duration>[Duration.zero]);
     });
   });
 }

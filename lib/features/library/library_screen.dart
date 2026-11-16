@@ -17,6 +17,8 @@ import 'package:laras/core/widgets/album_cover.dart';
 import 'package:laras/core/widgets/empty_state.dart';
 import 'package:laras/core/widgets/pressable.dart';
 import 'package:laras/data/database.dart';
+import 'package:laras/downloads/downloads.dart';
+import 'package:laras/features/downloads/download_button.dart';
 import 'package:laras/features/library/add_to_playlist_sheet.dart';
 import 'package:laras/features/library/collection_songs_screen.dart';
 import 'package:laras/features/library/paged_list.dart';
@@ -164,7 +166,8 @@ Widget _librarySongRow(
   bool showRemoveFromLibrary = false,
 }) {
   final AppLocalizations strings = AppLocalizations.of(context)!;
-  final Track track = view.toTrack();
+  final String? downloadsDir = DownloadsScope.downloadsDirOf(context);
+  final Track track = view.toTrack(downloadsDir: downloadsDir);
   final Track? current = snap.currentTrack;
   final bool isCurrent =
       current != null && current.videoId == track.videoId;
@@ -183,10 +186,17 @@ Widget _librarySongRow(
     isBusy: busy,
     onTap: port == null
         ? null
-        : () => playSongViews(port, snap, items, index),
+        : () => playSongViews(
+            port,
+            snap,
+            items,
+            index,
+            downloadsDir: downloadsDir,
+          ),
     trailing: Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
+        DownloadButton(track: track),
         IconButton(
           onPressed: () => service.toggleLiked(view.id),
           tooltip: liked ? strings.favoriteRemove : strings.favoriteAdd,
@@ -579,7 +589,10 @@ class _HistoryTab extends StatelessWidget {
                     List<PlayHistoryEntry> items,
                   ) {
                     final SongView view = entry.song;
-                    final Track track = view.toTrack();
+                    final String? downloadsDir =
+                        DownloadsScope.downloadsDirOf(context);
+                    final Track track =
+                        view.toTrack(downloadsDir: downloadsDir);
                     final Track? current = snap.currentTrack;
                     final bool isCurrent =
                         current != null &&
@@ -608,6 +621,7 @@ class _HistoryTab extends StatelessWidget {
                                   )
                                   .toList(),
                               index,
+                              downloadsDir: downloadsDir,
                             ),
                       trailing: IconButton(
                         onPressed: () => showAddToPlaylistSheet(

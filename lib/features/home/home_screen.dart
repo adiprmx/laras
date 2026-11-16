@@ -1,12 +1,14 @@
-/// Beranda: enam seksi dari data nyata (P4).
+/// Beranda: tujuh seksi dari data nyata (P4 + P5).
 ///
 /// 1. Lagu Pilihan — lima lagu kanari P1, selalu tampil dan langsung
-///    bisa diputar.
+///    bisa diputar (lagu yang terunduh diputar dari file lokal).
 /// 2. Baru Ditambahkan — lagu terbaru di library.
 /// 3. Baru diputar — lagu yang terakhir diputar, tanpa duplikat.
 /// 4. Lagu favorit — lagu yang ditandai hati.
 /// 5. Playlist kamu — playlist buatan pengguna.
-/// 6. Jelajah — rak dari YouTube Music (butuh internet; gagal muat
+/// 6. Unduhan (P5) — lagu terunduh, diputar offline; "Lihat semua"
+///    membuka tab Unduhan.
+/// 7. Jelajah — rak dari YouTube Music (butuh internet; gagal muat
 ///    menampilkan pesan, bukan data palsu).
 ///
 /// Seksi lokal yang kosong tidak tampil. Tarik ke bawah memuat ulang
@@ -20,7 +22,10 @@ import 'package:laras/core/theme/app_colors.dart';
 import 'package:laras/core/theme/app_theme.dart';
 import 'package:laras/core/widgets/loading_rows.dart';
 import 'package:laras/data/database.dart';
+import 'package:laras/downloads/downloads.dart';
 import 'package:laras/extractor/extractor.dart';
+import 'package:laras/features/downloads/download_button.dart';
+import 'package:laras/features/downloads/downloads_screen.dart';
 import 'package:laras/features/library/play_helpers.dart';
 import 'package:laras/features/library/playlist_detail_screen.dart';
 import 'package:laras/features/library/song_row.dart';
@@ -55,12 +60,17 @@ class _HomeLocalData {
     required this.recentPlayed,
     required this.favorites,
     required this.playlists,
+    required this.downloads,
   });
 
   final List<SongView> recents;
   final List<SongView> recentPlayed;
   final List<SongView> favorites;
   final List<PlaylistWithCount> playlists;
+
+  /// Lagu terunduh (P5): tampil di seksi "Unduhan", diputar dari file
+  /// lokal tanpa jaringan.
+  final List<SongView> downloads;
 }
 
 class HomeScreen extends StatefulWidget {
@@ -133,12 +143,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       library.recentPlayedSongs(limit: kHomeSectionLimit),
       library.favoriteSongsPage(limit: kHomeSectionLimit),
       library.playlistsPage(limit: kHomeSectionLimit),
+      library.downloadedSongs(limit: kHomeSectionLimit),
     ]);
     return _HomeLocalData(
       recents: results[0] as List<SongView>,
       recentPlayed: results[1] as List<SongView>,
       favorites: results[2] as List<SongView>,
       playlists: results[3] as List<PlaylistWithCount>,
+      downloads: results[4] as List<SongView>,
     );
   }
 
@@ -154,11 +166,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Tombol putar kepala seksi: bila salah satu dari lima lagu sedang
   /// diputar, tombol ini menjeda/melanjutkan; bila tidak, memutar dari
-  /// lagu pertama.
-  Future<void> _playAll(AudioPlayerPort port, PlayerSnapshot snap) async {
+  /// lagu pertama. [tracks] adalah daftar yang sadar-unduhan (lagu
+  /// terunduh membawa localPath).
+  Future<void> _playAll(
+    AudioPlayerPort port,
+    PlayerSnapshot snap,
+    List<Track> tracks,
+  ) async {
     final Track? current = snap.currentTrack;
     if (current != null &&
-        _tracks.any((Track t) => t.videoId == current.videoId)) {
+        tracks.any((Track t) => t.videoId == current.videoId)) {
       if (snap.playing) {
         await port.pause();
       } else {
@@ -166,7 +183,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       return;
     }
-    await port.setQueue(_tracks, initialIndex: 0, autoplay: true);
+    await port.setQueue(tracks, initialIndex: 0, autoplay: true);
   }
 
   void _retryExplore() {
@@ -228,10 +245,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: Text(strings.tabHome, style: theme.textTheme.displayLarge),
             ),
             const SizedBox(height: AppSpacing.lg),
-            _CanarySection(
+            _CanarySectionHost(
               port: port,
               snap: snap,
-              onPlayAll: port == null ? null : () => _playAll(port, snap),
+              onPlayAll: _playAll,
             ),
             _LocalSections(future: _localFuture, port: port, snap: snap),
             _ExploreSection(future: _exploreFuture, onRetry: _retryExplore),
@@ -242,16 +259,101 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
+/// Pembungkus seksi Lagu Pilihan (P5): membangun daftar lagu yang
+/// sadar-unduhan dari snapshot unduhan — lagu kanari yang terunduh
+/// diganti dengan Track ber-localPath supaya diputar dari file lokal
+/// (offline), bukan dari jaringan.
+class _CanarySectionHost extends StatelessWidget {
+  const _CanarySectionHost({
+    required this.port,
+    required this.snap,
+    required this.onPlayAll,
+  });
+
+  final AudioPlayerPort? port;
+  final PlayerSnapshot snap;
+  final Future<void> Function(
+    AudioPlayerPort port,
+    PlayerSnapshot snap,
+    List<Track> tracks,
+  )
+  onPlayAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final DownloadService? downloads = DownloadsScope.downloadsOf(context);
+    final AudioPlayerPort? port = this.port;
+    if (port == null) {
+      return _CanarySection(
+        port: port,
+        snap: snap,
+        tracks: _tracks,
+        onPlayAll: null,
+      );
+    }
+    if (downloads == null) {
+      // Tanpa layanan unduhan (database gagal / tes tanpa layanan):
+      // tombol putar kepala seksi tetap ada, memakai daftar kanari
+      // apa adanya (tidak ada lagu terunduh yang perlu localPath).
+      return _CanarySection(
+        port: port,
+        snap: snap,
+        tracks: _tracks,
+        onPlayAll: () => onPlayAll(port, snap, _tracks),
+      );
+    }
+    return StreamBuilder<DownloadsSnapshot>(
+      stream: downloads.stateStream,
+      // Snapshot terakhir sebagai data awal (stream broadcast tidak
+      // mengulang emisi lama untuk pendengar baru).
+      initialData: downloads.currentSnapshot,
+      builder:
+          (BuildContext context, AsyncSnapshot<DownloadsSnapshot> shot) {
+            final List<Track> effective = _localAwareTracks(
+              downloads,
+              shot.data,
+            );
+            return _CanarySection(
+              port: port,
+              snap: snap,
+              tracks: effective,
+              onPlayAll: () => onPlayAll(port, snap, effective),
+            );
+          },
+    );
+  }
+}
+
+/// Ganti lagu kanari yang terunduh dengan Track ber-localPath.
+List<Track> _localAwareTracks(
+  DownloadService downloads,
+  DownloadsSnapshot? snapshot,
+) {
+  if (snapshot == null) return _tracks;
+  final Map<String, SongView> byId = <String, SongView>{
+    for (final SongView view in snapshot.downloaded) view.id: view,
+  };
+  return _tracks.map((Track track) {
+    final SongView? view = byId[track.videoId];
+    if (view == null) return track;
+    return downloads.trackFor(view);
+  }).toList(growable: false);
+}
+
 /// Seksi 1: lima lagu pilihan (kanari), selalu tampil.
 class _CanarySection extends StatelessWidget {
   const _CanarySection({
     required this.port,
     required this.snap,
+    required this.tracks,
     this.onPlayAll,
   });
 
   final AudioPlayerPort? port;
   final PlayerSnapshot snap;
+
+  /// Daftar lagu yang sadar-unduhan (lihat [_CanarySectionHost]).
+  final List<Track> tracks;
   final VoidCallback? onPlayAll;
 
   @override
@@ -268,7 +370,7 @@ class _CanarySection extends StatelessWidget {
         snap.status == PlayerStatus.error &&
         snap.lastError != null &&
         snap.currentTrack != null &&
-        _tracks.any(
+        tracks.any(
           (Track t) => t.videoId == snap.currentTrack!.videoId,
         );
     return Column(
@@ -299,7 +401,7 @@ class _CanarySection extends StatelessWidget {
                   isPlaying:
                       snap.playing &&
                       snap.currentTrack != null &&
-                      _tracks.any(
+                      tracks.any(
                         (Track t) => t.videoId == snap.currentTrack!.videoId,
                       ),
                   onPressed: onPlayAll,
@@ -316,7 +418,7 @@ class _CanarySection extends StatelessWidget {
               onRetry: () => port.play(),
             ),
           ),
-        ..._tracks.asMap().entries.map((MapEntry<int, Track> entry) {
+        ...tracks.asMap().entries.map((MapEntry<int, Track> entry) {
           final int index = entry.key;
           final Track track = entry.value;
           final Track? current = snap.currentTrack;
@@ -338,12 +440,19 @@ class _CanarySection extends StatelessWidget {
               isBusy: busy,
               onTap: port == null
                   ? null
-                  : () => playTracks(port, snap, _tracks, index),
+                  : () => playTracks(port, snap, tracks, index),
               trailing: port == null
                   ? null
-                  : RoundPlayButton(
-                      isPlaying: playing,
-                      onPressed: () => playTracks(port, snap, _tracks, index),
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        DownloadButton(track: track),
+                        RoundPlayButton(
+                          isPlaying: playing,
+                          onPressed: () =>
+                              playTracks(port, snap, tracks, index),
+                        ),
+                      ],
                     ),
             ),
           );
@@ -381,6 +490,7 @@ class _LocalSections extends StatelessWidget {
         }
         if (data == null) return const SizedBox.shrink();
         final AppLocalizations strings = AppLocalizations.of(context)!;
+        final String? downloadsDir = DownloadsScope.downloadsDirOf(context);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -390,6 +500,7 @@ class _LocalSections extends StatelessWidget {
                 views: data.recents,
                 port: port,
                 snap: snap,
+                downloadsDir: downloadsDir,
               ),
             if (data.recentPlayed.isNotEmpty)
               _SongSection(
@@ -397,6 +508,7 @@ class _LocalSections extends StatelessWidget {
                 views: data.recentPlayed,
                 port: port,
                 snap: snap,
+                downloadsDir: downloadsDir,
               ),
             if (data.favorites.isNotEmpty)
               _SongSection(
@@ -404,9 +516,26 @@ class _LocalSections extends StatelessWidget {
                 views: data.favorites,
                 port: port,
                 snap: snap,
+                downloadsDir: downloadsDir,
               ),
             if (data.playlists.isNotEmpty)
               _PlaylistsSection(playlists: data.playlists),
+            if (data.downloads.isNotEmpty)
+              _SongSection(
+                title: strings.sectionDownloads,
+                views: data.downloads,
+                port: port,
+                snap: snap,
+                downloadsDir: downloadsDir,
+                onSeeAll: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (BuildContext context) =>
+                          const DownloadsScreen(),
+                    ),
+                  );
+                },
+              ),
           ],
         );
       },
@@ -414,26 +543,34 @@ class _LocalSections extends StatelessWidget {
   }
 }
 
-/// Satu seksi lagu lokal (Baru Ditambahkan / Baru diputar / Favorit).
+/// Satu seksi lagu lokal (Baru Ditambahkan / Baru diputar / Favorit /
+/// Unduhan). Lagu terunduh diputar dari file lokal via [downloadsDir].
 class _SongSection extends StatelessWidget {
   const _SongSection({
     required this.title,
     required this.views,
     required this.port,
     required this.snap,
+    required this.downloadsDir,
+    this.onSeeAll,
   });
 
   final String title;
   final List<SongView> views;
   final AudioPlayerPort? port;
   final PlayerSnapshot snap;
+  final String? downloadsDir;
+
+  /// Bila ada, judul seksi mendapat tombol "Lihat semua".
+  final VoidCallback? onSeeAll;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final AudioPlayerPort? port = this.port;
+    final VoidCallback? onSeeAll = this.onSeeAll;
     final List<Track> tracks = views
-        .map((SongView v) => v.toTrack())
+        .map((SongView v) => v.toTrack(downloadsDir: downloadsDir))
         .toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -441,7 +578,21 @@ class _SongSection extends StatelessWidget {
         const SizedBox(height: AppSpacing.xl),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          child: Text(title, style: theme.textTheme.titleMedium),
+          child: onSeeAll == null
+              ? Text(title, style: theme.textTheme.titleMedium)
+              : Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(title, style: theme.textTheme.titleMedium),
+                    ),
+                    TextButton(
+                      onPressed: onSeeAll,
+                      child: Text(
+                        AppLocalizations.of(context)!.seeAll,
+                      ),
+                    ),
+                  ],
+                ),
         ),
         const SizedBox(height: AppSpacing.sm),
         ...views.asMap().entries.map((MapEntry<int, SongView> entry) {
@@ -470,9 +621,16 @@ class _SongSection extends StatelessWidget {
                   : () => playTracks(port, snap, tracks, index),
               trailing: port == null
                   ? null
-                  : RoundPlayButton(
-                      isPlaying: isCurrent && snap.playing,
-                      onPressed: () => playTracks(port, snap, tracks, index),
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        DownloadButton(track: track),
+                        RoundPlayButton(
+                          isPlaying: isCurrent && snap.playing,
+                          onPressed: () =>
+                              playTracks(port, snap, tracks, index),
+                        ),
+                      ],
                     ),
             ),
           );

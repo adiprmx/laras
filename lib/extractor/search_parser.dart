@@ -10,14 +10,18 @@
 ///   untuk beranda/artis/mood, `twoColumnBrowseResultsRenderer` untuk
 ///   album/playlist.
 ///
-/// Parser ini toleran: satu item yang gagal di-parse dilewati, satu
-/// kelompok yang gagal tidak mengosongkan kelompok lain (PRD B1.1).
-/// Parser tidak pernah melempar untuk bentuk yang tidak dikenal —
-/// hasilnya hanya kosong. Kegagalan total (bukan JSON / tanpa `contents`)
-/// ditangani pemanggil sebagai parse gagal.
+/// Parser ini toleran di tingkat item: satu item yang gagal di-parse
+/// dilewati, satu kelompok yang gagal tidak mengosongkan kelompok lain
+/// (PRD B1.1). Tapi kegagalan STRUKTURAL tingkat atas (mis. `contents`
+/// bertipe string, bukan daftar) MELEMPAR TypeError dari cast `as` —
+/// pemanggil (InnertubeClient) wajib membungkus pemanggilan parser
+/// dengan try/catch dan memetakannya ke ExtractorException parseFailed
+/// (R1-M4), meniru pola parsePlayerResponse. Kegagalan total (bukan
+/// JSON / tanpa `contents`) ditangani pemanggil sebagai parse gagal.
 library;
 
 import 'models.dart';
+import 'url_allowlist.dart';
 
 /// Kata tipe di awal subjudul item pencarian, sesuai yang teramati di
 /// rekaman nyata.
@@ -74,26 +78,39 @@ GroupedSearchResults parseGroupedSearchResults(Map<String, dynamic> json) {
   }
 
   void addSong(SearchSong song) {
+    if (songs.length >= kMaxParserItemsPerGroup) return;
     if (seenSongs.add(song.videoId)) songs.add(song);
   }
 
   void addAlbum(SearchAlbum album) {
+    if (albums.length >= kMaxParserItemsPerGroup) return;
     if (seenBrowse.add(album.browseId)) albums.add(album);
   }
 
   void addArtist(SearchArtist artist) {
+    if (artists.length >= kMaxParserItemsPerGroup) return;
     if (seenBrowse.add(artist.channelId)) artists.add(artist);
   }
 
   void addPlaylist(SearchPlaylist playlist) {
+    if (playlists.length >= kMaxParserItemsPerGroup) return;
     if (seenBrowse.add(playlist.browseId)) playlists.add(playlist);
   }
+
+  /// Benar bila semua kelompok sudah penuh — tidak ada gunanya mem-parse
+  /// bagian berikutnya (R1-M3).
+  bool groupsFull() =>
+      songs.length >= kMaxParserItemsPerGroup &&
+      albums.length >= kMaxParserItemsPerGroup &&
+      artists.length >= kMaxParserItemsPerGroup &&
+      playlists.length >= kMaxParserItemsPerGroup;
 
   final List<dynamic>? sections = sectionList['contents'] as List<dynamic>?;
   if (sections == null) {
     return GroupedSearchResults(filterParams: filterParams);
   }
   for (final dynamic rawSection in sections) {
+    if (groupsFull()) break;
     if (rawSection is! Map<String, dynamic>) continue;
     try {
       // Kartu hasil teratas: lagu dari onTap + item-item di dalamnya.
@@ -211,6 +228,10 @@ List<String> parseSearchSuggestions(Map<String, dynamic> json) {
   final List<Object?> queue = <Object?>[json];
   int index = 0;
   while (index < queue.length) {
+    // R1-M3: saran yang dipakai pemanggil paling banyak 8; kumpulkan
+    // paling banyak 100 supaya respons raksasa tidak menumbuhkan
+    // daftar tanpa batas.
+    if (out.length >= kMaxParserItemsPerGroup) break;
     final Object? node = queue[index++];
     if (node is List) {
       queue.addAll(node);
@@ -521,6 +542,7 @@ BrowseShelf? _parseBrowseSection(Map<String, dynamic> section) {
     final List<dynamic>? contents = carousel['contents'] as List<dynamic>?;
     if (contents != null) {
       for (final dynamic raw in contents) {
+        if (items.length >= kMaxParserItemsPerGroup) break;
         if (raw is! Map<String, dynamic>) continue;
         try {
           final BrowseItem? item = _parseTwoRowItem(raw);
@@ -557,6 +579,7 @@ BrowseShelf? _parseBrowseSection(Map<String, dynamic> section) {
     final List<dynamic>? gridItems = grid['items'] as List<dynamic>?;
     if (gridItems != null) {
       for (final dynamic raw in gridItems) {
+        if (items.length >= kMaxParserItemsPerGroup) break;
         if (raw is! Map<String, dynamic>) continue;
         try {
           final Map<String, dynamic>? button =
@@ -666,6 +689,7 @@ List<BrowseItem> _listItemsToBrowseItems(List<dynamic>? contents) {
   final List<BrowseItem> out = <BrowseItem>[];
   if (contents == null) return out;
   for (final dynamic raw in contents) {
+    if (out.length >= kMaxParserItemsPerGroup) break;
     if (raw is! Map<String, dynamic>) continue;
     try {
       final Map<String, dynamic>? item =
@@ -742,6 +766,12 @@ Map<String, dynamic>? _firstRenderer(Map<String, dynamic> wrapper) {
 
 /// Thumbnail terbesar yang lebarnya tidak melebihi 544 px (cukup untuk
 /// sampul di daftar dan kartu); bila tidak ada, yang terkecil.
+///
+/// R1-L2: hanya URL thumbnail dari host yang diizinkan (ytimg /
+/// googleusercontent / ggpht, HTTPS) yang jadi kandidat. URL dari host
+/// lain (atau skema http) diabaikan — gambarnya tidak pernah di-fetch,
+/// UI memakai placeholder. Validasi di sini menutup SEMUA jalur tampil,
+/// karena semua thumbnail mengalir lewat parser ini.
 String? _bestThumbnail(Map<String, dynamic>? node) {
   if (node == null) return null;
   final Map<String, dynamic> renderer =
@@ -758,6 +788,7 @@ String? _bestThumbnail(Map<String, dynamic>? node) {
     if (raw is! Map<String, dynamic>) continue;
     final String? url = raw['url'] as String?;
     if (url == null || url.isEmpty) continue;
+    if (!isAllowedThumbnailUrl(url)) continue;
     final int width = _asInt(raw['width']) ?? 0;
     if (width < smallestWidth) {
       smallestWidth = width;

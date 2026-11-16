@@ -10,33 +10,42 @@
 ///    menjalankan transform `n`.
 ///
 /// Batas SimpMusic (arsitektur 3.3, keputusan koordinator bagian 7):
-/// memori 192 MiB, stack 8 MiB, timeout 10 detik, eksekusi serial, tanpa
+/// memori 192 MiB, stack 256 KiB, timeout 10 detik, eksekusi serial, tanpa
 /// callback host, tanpa fetch dari dalam JS.
 ///
-/// CATATAN PENTING (temuan spike, diverifikasi di source quickjs_engine
-/// 0.1.7): parameter `timeout` di konstruktor `QuickJsRuntime2` TIDAK
-/// BERFUNGSI - sisi Dart meneruskan timeout ke fungsi native
-/// `jsNewRuntime`, tapi implementasi C-nya hanya menerima channel dan tidak
-/// memasang interrupt handler sama sekali. Karena itu timeout 10 detik
-/// ditegakkan di Dart: runtime hidup di isolate pekerja, dan bila satu
-/// solve melewati 10 detik, isolate dimatikan paksa lalu dibuat ulang
-/// (runtime berikutnya diinisialisasi ulang). Batas memori dan stack
-/// ditegakkan native (`JS_SetMemoryLimit`, `JS_SetMaxStackSize`) dan
-/// berfungsi.
+/// Mesin: gg_quickjs 0.1.0 (QuickJS-ng 0.17.0) — menggantikan
+/// quickjs_engine 0.1.7 (QuickJS-NG 0.14.0) yang rentan CVE-2026-120438 /
+/// CVE-2026-120439 / CVE-2026-120440 (R1-H1; ketiganya diperbaiki di
+/// 0.16.0). Timeout gg_quickjs BERFUNGSI (ditegakkan via interrupt handler
+/// QuickJS-ng): evaluate yang melewati batas melempar JsInterruptedError
+/// dan runtime tetap bisa dipakai. Isolate kill 10 detik di Dart
+/// dipertahankan sebagai backstop (defense in depth) untuk kasus native
+/// call yang nyangkut.
 ///
-/// Runtime QuickJS tidak bisa dites di `flutter test` host Linux (paket
-/// tidak membawa lib native Linux; lib hanya dibangun untuk Android/iOS).
-/// Logika murni (ekstraksi, prelude, driver) dites tanpa QuickJS; wiring
-/// QuickJS diverifikasi lewat build CI + APK demo di perangkat owner.
+/// Stack 256 KiB adalah default gg_quickjs dan batas aman praktis:
+/// README paket memperingatkan limit > 512 KiB bisa crash proses native
+/// (stack isolate Dart ~1 MiB di 64-bit). Solver lama memakai 8 MiB di
+/// quickjs_engine — nilai itu TIDAK aman di gg_quickjs, jangan dikembalikan.
+///
+/// Peringatan README gg_quickjs: QuickJS-ng tidak selalu pulih dari OOM
+/// saat compile — eval setelah memori habis bisa crash proses. Mitigasi:
+/// batas memori 192 MiB jauh di atas kebutuhan nyata solver (base.js
+/// ~2,6 MB + prelude kecil), dan eksekusi serial satu runtime.
+///
+/// gg_quickjs mendukung Linux host (build hook mengompilasi QuickJS-ng
+/// dari source dengan gcc), jadi tes solver bisa jalan di `flutter test`
+/// bila native asset berhasil dibangun — tidak seperti quickjs_engine
+/// yang tidak membawa lib native Linux.
 library;
 
 import 'dart:async';
 import 'dart:isolate';
 
-import 'package:quickjs_engine/quickjs_engine.dart';
+import 'package:gg_quickjs/gg_quickjs.dart';
 
 import '../errors.dart';
 import '../models.dart';
+import '../url_allowlist.dart';
 import 'player_script.dart';
 
 /// Solver signature + n challenge: dari format cipher menjadi URL final.
@@ -62,14 +71,17 @@ class QuickJsLimits {
   /// Memori maksimum runtime: 192 MiB.
   static const int memoryBytes = 192 * 1024 * 1024;
 
-  /// Stack maksimum runtime: 8 MiB.
-  static const int stackBytes = 8 * 1024 * 1024;
+  /// Stack maksimum runtime: 256 KiB (default gg_quickjs).
+  ///
+  /// Jangan naikkan: README gg_quickjs memperingatkan limit > 512 KiB
+  /// bisa crash proses native (stack isolate Dart ~1 MiB di 64-bit).
+  static const int stackBytes = 256 * 1024;
 
   /// Timeout satu eksekusi (init maupun solve): 10 detik.
   static const Duration timeout = Duration(seconds: 10);
 }
 
-/// Implementasi [SignatureSolver] di atas quickjs_engine.
+/// Implementasi [SignatureSolver] di atas gg_quickjs.
 ///
 /// Satu isolate pekerja memegang satu runtime QuickJS; semua solve
 /// dieksekusi serial lewat antrean Future di isolate utama.
@@ -145,10 +157,12 @@ class QuickJsSignatureSolver implements SignatureSolver {
       sigParam: sigParam,
     );
     final String result = await _requestSolve(driver);
-    if (result.isEmpty || !result.startsWith('https://')) {
+    // R1-M1: hasil solver adalah URL dari JS jaringan — host-nya harus
+    // googlevideo.com, bukan sekadar ber-skema https.
+    if (result.isEmpty || !isAllowedStreamUrl(result)) {
       throw const ExtractorException(
         ResolveFailureCause.parseFailed,
-        detail: 'solver mengembalikan bukan URL',
+        detail: 'solver mengembalikan URL di luar host yang diizinkan',
       );
     }
     return result;
@@ -209,8 +223,10 @@ class QuickJsSignatureSolver implements SignatureSolver {
     final Completer<String> completer = Completer<String>();
     _pending = completer;
     _pendingTimer = Timer(QuickJsLimits.timeout, () {
-      // Timeout ditegakkan di sini (bukan oleh runtime): matikan isolate
-      // supaya eksekusi JS yang nyangkut ikut mati.
+      // Backstop: runtime gg_quickjs sendiri sudah melempar
+      // JsInterruptedError bila evaluate melewati batas; timer ini hanya
+      // berjaga bila native call nyangkut dan worker tidak merespons.
+      // Matikan isolate supaya eksekusi JS yang nyangkut ikut mati.
       _killWorker();
       if (!completer.isCompleted) {
         completer.completeError(
@@ -247,45 +263,58 @@ class QuickJsSignatureSolver implements SignatureSolver {
   }
 }
 
-/// Entry point isolate pekerja: memegang satu [QuickJsRuntime2].
+/// Entry point isolate pekerja: memegang satu [JsRuntime].
 ///
 /// Protokol pesan (List 2 elemen):
 /// - `['init', skrip]` → jalankan stub + base.js + prelude; balas
-///   `['ok', '']` atau `['error', pesan]`.
+///   `['ok', '']` atau `['error', pesan]`. Nilai penyelesaian skrip init
+///   (undefined) tidak dipakai.
 /// - `['solve', driver]` → jalankan driver, balas `['ok', url]` atau
-///   `['error', pesan]`.
+///   `['error', pesan]`. Driver wajib mengembalikan String
+///   (`__u.gf()`); nilai bukan string adalah error solver.
 ///
-/// Tidak ada callback host yang didaftarkan (`setupBridge` tidak pernah
-/// dipanggil) dan fetch tidak diaktifkan: JS tidak bisa memanggil Dart dan
-/// tidak bisa mengakses jaringan.
+/// Tidak ada callback host yang didaftarkan (`registerFunction` tidak
+/// pernah dipanggil) dan fetch tidak diaktifkan (tanpa `network` di
+/// opsi): JS tidak bisa memanggil Dart dan tidak bisa mengakses jaringan.
+/// Timer juga mati (default `timers: false`) dan tidak ada `console`.
 void _workerEntry(SendPort mainPort) {
   final ReceivePort workerPort = ReceivePort();
   mainPort.send(workerPort.sendPort);
-  QuickJsRuntime2? runtime;
+  JsRuntime? runtime;
 
-  QuickJsRuntime2 ensureRuntime() {
-    return runtime ??= QuickJsRuntime2(
-      stackSize: QuickJsLimits.stackBytes,
-      memoryLimit: QuickJsLimits.memoryBytes,
-      // timeout konstruktor TIDAK berfungsi (lihat catatan di atas);
-      // timeout ditegakkan isolate utama dengan mematikan isolate ini.
-      timeout: QuickJsLimits.timeout.inMilliseconds,
+  JsRuntime ensureRuntime() {
+    return runtime ??= JsRuntime(
+      options: JsRuntimeOptions(
+        memoryLimit: QuickJsLimits.memoryBytes,
+        maxStackSize: QuickJsLimits.stackBytes,
+        // Timeout gg_quickjs BERFUNGSI (interrupt handler QuickJS-ng):
+        // evaluate yang melewati batas melempar JsInterruptedError.
+        // Isolate kill di isolate utama tetap dipertahankan sebagai
+        // backstop bila native call nyangkut.
+        timeout: QuickJsLimits.timeout,
+      ),
     );
   }
 
   workerPort.listen((dynamic message) {
     if (message is! List || message.length != 2) return;
-    // Elemen pertama adalah tipe ('init'/'solve'); keduanya dievaluasi
-    // dengan cara yang sama, jadi tipenya tidak dipakai di sini.
+    final String type = message[0] as String;
     final String code = message[1] as String;
     try {
-      final QuickJsRuntime2 rt = ensureRuntime();
-      final JsEvalResult result = rt.evaluate(code);
-      if (result.isError) {
-        mainPort.send(<Object?>['error', result.stringResult]);
+      final JsRuntime rt = ensureRuntime();
+      final Object? result = rt.evaluate(code);
+      if (type == 'init') {
+        mainPort.send(<Object?>['ok', '']);
         return;
       }
-      mainPort.send(<Object?>['ok', result.stringResult]);
+      if (result is! String) {
+        mainPort.send(<Object?>[
+          'error',
+          'driver solver mengembalikan nilai bukan string',
+        ]);
+        return;
+      }
+      mainPort.send(<Object?>['ok', result]);
     } catch (e) {
       mainPort.send(<Object?>['error', e.toString()]);
     }

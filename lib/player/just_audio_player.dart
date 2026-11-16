@@ -14,6 +14,13 @@
 ///   kurang lebih 2 detik), maks 3 percobaan per lagu, tanpa interaksi
 ///   pengguna. Bila ketiganya gagal, lagu dilewati dan kegagalan
 ///   dilaporkan jujur lewat [PlayerSnapshot.lastError].
+/// * Jalur lokal (P5): track dengan `localPath` (lagu terunduh) diputar
+///   dari file tanpa pernah memanggil resolver (pagar P0 — lihat
+///   `_onEngineError`). Cache streaming (P5): bila lagu belum diunduh
+///   tapi ada salinan cache lengkap, file cache dipakai; setiap resolve
+///   yang berhasil dicatat ke cache supaya salinan bisa diunduh di latar
+///   untuk pemutaran berikutnya. Cache gagal diputar dihapus dulu
+///   sebelum re-resolve, supaya percobaan berikutnya streaming segar.
 /// * Interupsi ditangani di sini lewat audio_session (just_audio
 ///   dibuat dengan `handleInterruptions: false`): panggilan masuk
 ///   menjeda lalu lanjut otomatis, headset dicabut menjeda tanpa lanjut
@@ -24,7 +31,9 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
+import 'package:laras/downloads/stream_cache.dart';
 import 'package:laras/extractor/extractor.dart';
 
 import 'audio_player_port.dart';
@@ -42,9 +51,11 @@ class JustAudioPlayerPort implements AudioPlayerPort {
     required AudioResolver resolver,
     AudioSessionPort? session,
     QueueController? queueController,
+    PlaybackCache? playbackCache,
   }) : _engine = engine, // ignore: prefer_initializing_formals
        _resolver = resolver, // ignore: prefer_initializing_formals
        _session = session, // ignore: prefer_initializing_formals
+       _playbackCache = playbackCache, // ignore: prefer_initializing_formals
        _queue = queueController ?? QueueController() {
     _engineStateSub = _engine.stateStream.listen(_onEngineState);
     _positionSub = _engine.positionStream.listen(_onPosition);
@@ -81,6 +92,21 @@ class JustAudioPlayerPort implements AudioPlayerPort {
   final AudioResolver _resolver;
   final AudioSessionPort? _session;
   final QueueController _queue;
+
+  /// Cache streaming (P5). Null berarti tanpa cache (tes tanpa layanan
+  /// unduhan, atau database gagal dibuka). Bisa dipasang belakangan
+  /// lewat setter karena layanan unduhan dibuat sesudah port di main().
+  PlaybackCache? _playbackCache;
+
+  /// Cache streaming (P5). Lihat [_playbackCache].
+  set playbackCache(PlaybackCache? cache) => _playbackCache = cache;
+
+  /// videoId yang sumber jendelanya saat ini berasal dari file cache
+  /// (maks 2 entri, sejajar jendela). Dipakai `_onEngineError` untuk
+  /// menghapus entri cache yang ternyata gagal diputar sebelum
+  /// re-resolve — tanpa ini, re-resolve bisa mengambil file cache yang
+  /// sama lagi dan gagal berulang.
+  final Set<String> _cacheBacked = <String>{};
 
   PlayerSnapshot _snapshot = PlayerSnapshot.idle;
   final StreamController<PlayerSnapshot> _stateController =
@@ -311,6 +337,13 @@ class JustAudioPlayerPort implements AudioPlayerPort {
       unawaited(_failCurrentTrack(null));
       return;
     }
+    if (_cacheBacked.remove(track.videoId)) {
+      // Sumbernya file cache dan gagal diputar: hapus entri cache-nya
+      // dulu supaya re-resolve mengambil URL segar, bukan file yang
+      // sama lagi. Penghapusan best-effort (tidak ditunggu).
+      final PlaybackCache? cache = _playbackCache;
+      if (cache != null) unawaited(cache.invalidate(track.videoId));
+    }
     unawaited(_reResolveLoop(track));
   }
 
@@ -481,6 +514,22 @@ class JustAudioPlayerPort implements AudioPlayerPort {
     if (cached != null) return cached;
     final ResolvedAudio resolved = await _resolver.resolve(track.videoId);
     _resolved[track.videoId] = resolved;
+    // Catat ke cache streaming (P5): salinan file diunduh di latar
+    // supaya pemutaran berikutnya bisa offline. Best-effort, tidak
+    // pernah menggagalkan pemutaran.
+    final PlaybackCache? cache = _playbackCache;
+    if (cache != null) {
+      try {
+        cache.noteResolved(
+          track.videoId,
+          resolved.url,
+          resolved.itag,
+          resolved.mimeType,
+        );
+      } on Object catch (_) {
+        // Cache gagal dicatat: pemutaran tetap jalan dari jaringan.
+      }
+    }
     _emit(
       _snapshot.copyWith(
         lastResolve: ResolveInfo(
@@ -493,8 +542,19 @@ class JustAudioPlayerPort implements AudioPlayerPort {
     return resolved;
   }
 
+  /// Urutan sumber audio (PRD B2.1): file unduhan dulu, lalu file cache
+  /// streaming, lalu resolve URL stream dari videoId.
   Future<Uri> _sourceUriFor(Track track) async {
     if (track.isLocal) return Uri.file(track.localPath!);
+    final PlaybackCache? cache = _playbackCache;
+    if (cache != null) {
+      final File? cachedFile = await cache.fileFor(track.videoId);
+      if (cachedFile != null) {
+        _cacheBacked.add(track.videoId);
+        return Uri.file(cachedFile.path);
+      }
+      _cacheBacked.remove(track.videoId);
+    }
     final ResolvedAudio resolved = await _resolveFor(track);
     return Uri.parse(resolved.url);
   }
@@ -629,6 +689,7 @@ class JustAudioPlayerPort implements AudioPlayerPort {
         _queue.trackAfterCurrent!.videoId,
     };
     _resolved.removeWhere((String key, _) => !keep.contains(key));
+    _cacheBacked.retainAll(keep);
   }
 
   /// Sinkronkan lagu berikutnya di jendela setelah antrean berubah

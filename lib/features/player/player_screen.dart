@@ -3,6 +3,7 @@ import 'package:laras/core/theme/app_colors.dart';
 import 'package:laras/core/theme/app_theme.dart';
 import 'package:laras/core/widgets/album_cover.dart';
 import 'package:laras/data/database.dart';
+import 'package:laras/features/downloads/download_button.dart';
 import 'package:laras/features/player/playback_error_banner.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/player/audio_player_port.dart';
@@ -142,7 +143,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               ),
                             ],
                             const SizedBox(height: AppSpacing.xs),
-                            Center(child: _FavoriteHeart(track: track)),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: <Widget>[
+                                _FavoriteHeart(track: track),
+                                DownloadButton(track: track),
+                              ],
+                            ),
                             const SizedBox(height: AppSpacing.sm),
                             Row(
                               children: <Widget>[

@@ -24,6 +24,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
@@ -31,6 +32,7 @@ import 'client_definitions.dart';
 import 'errors.dart';
 import 'models.dart';
 import 'player_parser.dart';
+import 'response_limits.dart';
 import 'search_parser.dart';
 
 /// Hasil search: visitorData segar + daftar lagu.
@@ -141,32 +143,45 @@ class InnertubeClient {
       body,
       client,
     );
-    // Respons search yang valid selalu membawa `contents` — walau
-    // hasilnya kosong. Tanpa itu, server menolak (mis. LOGIN_REQUIRED)
-    // dan client berikut patut dicoba; diam-diam kosong akan menipu
-    // pengguna seolah tidak ada hasil.
-    if (json['contents'] == null) {
-      throw const ExtractorException(
+    // R1-M4: seluruh fase parse dibungkus try/catch (meniru
+    // parsePlayerResponse) — cast `as` yang gagal melempar TypeError,
+    // dan TypeError yang lolos dari sini membuat layar pencarian macet
+    // di loading selamanya (pemanggil hanya menangkap ExtractorException).
+    try {
+      // Respons search yang valid selalu membawa `contents` — walau
+      // hasilnya kosong. Tanpa itu, server menolak (mis. LOGIN_REQUIRED)
+      // dan client berikut patut dicoba; diam-diam kosong akan menipu
+      // pengguna seolah tidak ada hasil.
+      if (json['contents'] == null) {
+        throw const ExtractorException(
+          ResolveFailureCause.parseFailed,
+          detail: 'respons search tanpa contents',
+        );
+      }
+      final Map<String, dynamic>? responseContext =
+          json['responseContext'] as Map<String, dynamic>?;
+      final String? visitorData = responseContext?['visitorData'] as String?;
+      if (visitorData != null && visitorData.isNotEmpty) {
+        _visitorData = visitorData;
+        _visitorDataFetchedAt = DateTime.now();
+      }
+      final GroupedSearchResults grouped = parseGroupedSearchResults(json);
+      final List<SearchSong> songs = grouped.songs.isNotEmpty
+          ? grouped.songs
+          : parseSearchResponse(json);
+      return SearchResult(
+        visitorData: visitorData,
+        songs: songs,
+        grouped: grouped,
+      );
+    } on ExtractorException {
+      rethrow;
+    } catch (e) {
+      throw ExtractorException(
         ResolveFailureCause.parseFailed,
-        detail: 'respons search tanpa contents',
+        detail: 'respons search tidak sesuai bentuk yang diharapkan: $e',
       );
     }
-    final Map<String, dynamic>? responseContext =
-        json['responseContext'] as Map<String, dynamic>?;
-    final String? visitorData = responseContext?['visitorData'] as String?;
-    if (visitorData != null && visitorData.isNotEmpty) {
-      _visitorData = visitorData;
-      _visitorDataFetchedAt = DateTime.now();
-    }
-    final GroupedSearchResults grouped = parseGroupedSearchResults(json);
-    final List<SearchSong> songs = grouped.songs.isNotEmpty
-        ? grouped.songs
-        : parseSearchResponse(json);
-    return SearchResult(
-      visitorData: visitorData,
-      songs: songs,
-      grouped: grouped,
-    );
   }
 
   /// Request browse YouTube Music: beranda (FEmusic_home), halaman
@@ -191,13 +206,25 @@ class InnertubeClient {
       body,
       client,
     );
-    if (json['contents'] == null) {
-      throw const ExtractorException(
+    // R1-M4: sama seperti search — TypeError dari parser dipetakan ke
+    // ExtractorException supaya layar browse menampilkan pesan error +
+    // tombol coba lagi, bukan shimmer selamanya.
+    try {
+      if (json['contents'] == null) {
+        throw const ExtractorException(
+          ResolveFailureCause.parseFailed,
+          detail: 'respons browse tanpa contents',
+        );
+      }
+      return parseBrowsePage(json);
+    } on ExtractorException {
+      rethrow;
+    } catch (e) {
+      throw ExtractorException(
         ResolveFailureCause.parseFailed,
-        detail: 'respons browse tanpa contents',
+        detail: 'respons browse tidak sesuai bentuk yang diharapkan: $e',
       );
     }
-    return parseBrowsePage(json);
   }
 
   /// Request saran pencarian (`music/get_search_suggestions`).
@@ -220,8 +247,18 @@ class InnertubeClient {
       },
       client,
     );
-    final List<String> suggestions = parseSearchSuggestions(json);
-    return suggestions.take(8).toList(growable: false);
+    // R1-M4: sama seperti search/browse.
+    try {
+      final List<String> suggestions = parseSearchSuggestions(json);
+      return suggestions.take(8).toList(growable: false);
+    } on ExtractorException {
+      rethrow;
+    } catch (e) {
+      throw ExtractorException(
+        ResolveFailureCause.parseFailed,
+        detail: 'respons saran tidak sesuai bentuk yang diharapkan: $e',
+      );
+    }
   }
 
   /// Request player untuk satu videoId.
@@ -265,13 +302,16 @@ class InnertubeClient {
   /// GET teks mentah (untuk HTML youtube.com dan base.js).
   ///
   /// [maxBytes] membatasi ukuran respons (base.js ~2,7 MB; HTML ~1 MB).
-  /// Melempar [ExtractorException] bila ukuran melewati batas atau jaringan
-  /// gagal. Retry 3x (backoff 1 dtk lalu 2 dtk) untuk error jaringan dan
-  /// HTTP 429/503 - sama seperti [_postJson]. Retry penting karena load
-  /// script ada di jalur kritis resolve pertama (untuk sts).
+  /// Batas ditegakkan SAAT STREAMING (R1-M3): begitu byte yang mengalir
+  /// melewati batas, pembacaan dibatalkan — respons tidak pernah utuh di
+  /// memori. Melempar [ExtractorException] bila ukuran melewati batas
+  /// atau jaringan gagal. Retry 3x (backoff 1 dtk lalu 2 dtk) untuk
+  /// error jaringan dan HTTP 429/503 - sama seperti [_postJson]. Retry
+  /// penting karena load script ada di jalur kritis resolve pertama
+  /// (untuk sts).
   Future<String> fetchText(
     String url, {
-    int maxBytes = 8 * 1024 * 1024,
+    int maxBytes = ResponseLimits.playerScriptBytes,
     Duration timeout = const Duration(seconds: 60),
   }) async {
     const List<Duration> backoff = <Duration>[
@@ -281,30 +321,38 @@ class InnertubeClient {
     final Random random = Random();
     DioException? lastError;
     for (int attempt = 0; attempt < 3; attempt++) {
+      // Cap per percobaan (token yang dibatalkan tidak bisa dipakai ulang).
+      final ResponseSizeCap cap = ResponseSizeCap(maxBytes);
       try {
-        final Response<List<int>> response = await _dio.get<List<int>>(
-          url,
-          options: Options(
-            responseType: ResponseType.bytes,
-            receiveTimeout: timeout,
-            sendTimeout: const Duration(seconds: 10),
-            headers: <String, String>{
-              'User-Agent': kWebRemixClient.userAgent,
-              'Accept': '*/*',
-            },
-          ),
+        final Response<ResponseBody> response =
+            await _dio.get<ResponseBody>(
+              url,
+              options: Options(
+                responseType: ResponseType.stream,
+                receiveTimeout: timeout,
+                sendTimeout: const Duration(seconds: 10),
+                headers: <String, String>{
+                  'User-Agent': kWebRemixClient.userAgent,
+                  'Accept': '*/*',
+                },
+              ),
+              cancelToken: cap.cancelToken,
+              onReceiveProgress: cap.onReceiveProgress,
+            );
+        checkContentLength(response, maxBytes);
+        final Uint8List bytes = await readCappedResponseBody(
+          response.data!,
+          requestOptions: response.requestOptions,
+          maxBytes: maxBytes,
+          chunkTimeout: timeout,
         );
-        final List<int> bytes = response.data ?? <int>[];
-        if (bytes.length > maxBytes) {
-          throw const ExtractorException(
-            ResolveFailureCause.parseFailed,
-            detail: 'respons teks melebihi batas ukuran',
-          );
-        }
         return utf8.decode(bytes);
       } on ExtractorException {
         rethrow;
       } on DioException catch (e) {
+        // Respons raksasa (cap) bukan error jaringan: jangan retry,
+        // langsung parseFailed.
+        cap.throwIfExceeded();
         lastError = e;
         if (!_isRetryable(e) || attempt == 2) break;
         await Future<void>.delayed(
@@ -316,6 +364,11 @@ class InnertubeClient {
   }
 
   /// POST JSON ke endpoint youtubei dengan retry backoff.
+  ///
+  /// Respons dibaca sebagai stream dengan batas
+  /// [ResponseLimits.youtubeiJsonBytes] (R1-M3): Dio tidak pernah
+  /// men-decode body tanpa batas. Body yang bukan objek JSON (atau JSON
+  /// yang tidak valid) melempar parseFailed.
   Future<Map<String, dynamic>> _postJson(
     String path,
     Map<String, dynamic> body,
@@ -329,26 +382,36 @@ class InnertubeClient {
     final Random random = Random();
     DioException? lastError;
     for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      // Cap per percobaan (token yang dibatalkan tidak bisa dipakai ulang).
+      final ResponseSizeCap cap =
+          ResponseSizeCap(ResponseLimits.youtubeiJsonBytes);
       try {
-        final Response<dynamic> response = await _dio.post<dynamic>(
-          '$path?key=$kInnertubeApiKey&prettyPrint=false',
-          data: body,
-          options: Options(
-            headers: <String, String>{
-              'User-Agent': client.userAgent,
-              'X-YouTube-Client-Name': client.clientId,
-              'X-YouTube-Client-Version': client.version,
-              'Accept': 'application/json',
-              'Accept-Language': 'en-US,en;q=0.9',
-            },
-          ),
+        final Response<ResponseBody> response =
+            await _dio.post<ResponseBody>(
+              '$path?key=$kInnertubeApiKey&prettyPrint=false',
+              data: body,
+              options: Options(
+                responseType: ResponseType.stream,
+                headers: <String, String>{
+                  'User-Agent': client.userAgent,
+                  'X-YouTube-Client-Name': client.clientId,
+                  'X-YouTube-Client-Version': client.version,
+                  'Accept': 'application/json',
+                  'Accept-Language': 'en-US,en;q=0.9',
+                },
+              ),
+              cancelToken: cap.cancelToken,
+              onReceiveProgress: cap.onReceiveProgress,
+            );
+        checkContentLength(response, ResponseLimits.youtubeiJsonBytes);
+        final Uint8List bytes = await readCappedResponseBody(
+          response.data!,
+          requestOptions: response.requestOptions,
+          maxBytes: ResponseLimits.youtubeiJsonBytes,
+          chunkTimeout: const Duration(seconds: 30),
         );
-        final dynamic data = response.data;
-        if (data is Map<String, dynamic>) return data;
-        if (data is String) {
-          final dynamic decoded = jsonDecode(data);
-          if (decoded is Map<String, dynamic>) return decoded;
-        }
+        final dynamic decoded = _decodeJsonBytes(bytes);
+        if (decoded is Map<String, dynamic>) return decoded;
         throw const ExtractorException(
           ResolveFailureCause.parseFailed,
           detail: 'respons youtubei bukan objek JSON',
@@ -356,6 +419,9 @@ class InnertubeClient {
       } on ExtractorException {
         rethrow;
       } on DioException catch (e) {
+        // Respons raksasa (cap) bukan error jaringan: jangan retry,
+        // langsung parseFailed.
+        cap.throwIfExceeded();
         lastError = e;
         final bool retryable = _isRetryable(e);
         if (!retryable || attempt == maxAttempts - 1) break;
@@ -365,6 +431,20 @@ class InnertubeClient {
       }
     }
     throw _mapDioException(lastError!, client.name);
+  }
+
+  /// Decode byte respons menjadi JSON. FormatException (UTF-8/JSON tidak
+  /// valid) dipetakan ke parseFailed — respons 200 yang isinya sampah
+  /// adalah kegagalan parse, bukan kegagalan jaringan.
+  dynamic _decodeJsonBytes(Uint8List bytes) {
+    try {
+      return jsonDecode(utf8.decode(bytes));
+    } on FormatException catch (e) {
+      throw ExtractorException(
+        ResolveFailureCause.parseFailed,
+        detail: 'respons youtubei bukan JSON valid: $e',
+      );
+    }
   }
 
   /// Retry hanya untuk 429/503 dan error jaringan (timeout, koneksi putus,

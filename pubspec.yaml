@@ -27,7 +27,7 @@ dependencies:
 
   # Jaringan dan ekstraksi.
   dio: 5.11.1
-  quickjs_engine: 0.1.7
+  gg_quickjs: 0.1.0
 
   # Cache sampul dan penyimpanan file.
   cached_network_image_ce: 4.13.2

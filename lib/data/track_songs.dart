@@ -16,6 +16,7 @@ import 'package:laras/player/track.dart';
 
 import 'laras_database.dart';
 import 'library_service.dart';
+import 'tables.dart';
 
 extension TrackSongMapping on Track {
   /// Companion untuk insert/update baris lagu dari metadata track.
@@ -76,9 +77,23 @@ extension TrackSongMapping on Track {
 /// Dipakai beranda (seksi library) dan tab Library saat pengguna mengetuk
 /// lagu: daftar yang tampil menjadi antrean pemutar.
 extension SongViewTrack on SongView {
-  Track toTrack() {
+  /// Lagu database menjadi lagu pemutar.
+  ///
+  /// Bila lagu terunduh dan [downloadsDir] diberikan, track membawa
+  /// `localPath` (file lokal) supaya pemutar memutar dari file tanpa
+  /// jaringan (pagar P0: track lokal tidak pernah memanggil resolver).
+  /// Tanpa [downloadsDir], track selalu streaming (dipakai layar yang
+  /// tidak punya akses layanan unduhan, mis. hasil pencarian).
+  Track toTrack({String? downloadsDir}) {
     final int? seconds = song.durationSeconds;
     final String? thumbnail = song.thumbnailUrl;
+    final String? relative = song.filePath;
+    final String? localPath =
+        song.downloadState == DownloadState.downloaded &&
+            relative != null &&
+            downloadsDir != null
+        ? '$downloadsDir/$relative'
+        : null;
     return Track(
       videoId: song.id,
       title: song.title,
@@ -87,6 +102,7 @@ extension SongViewTrack on SongView {
       artUri: thumbnail == null || thumbnail.isEmpty
           ? null
           : Uri.tryParse(thumbnail),
+      localPath: localPath,
     );
   }
 }

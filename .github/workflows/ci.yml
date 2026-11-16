@@ -1,6 +1,12 @@
 # CI: analyze, test, and APK builds on every push and pull request.
 # Flutter is pinned to 3.47.8. Bumping it is a deliberate change, not automatic.
 #
+# Supply chain (R1-L5): every action is pinned to a full commit SHA, not a
+# mutable tag — a tag can be moved to different code after review, a SHA
+# cannot. The tag each SHA corresponds to is kept in a trailing comment;
+# SHAs were verified against the GitHub API (16 Nov 2026). To update an
+# action, look up the new tag's SHA and change both the SHA and the comment.
+#
 # Size rule (K4): the 25 MB per-ABI limit applies to the RELEASE APK, the
 # artifact users install. Debug APKs are far larger by design (unstripped
 # engine, JIT, debug symbols — run 43728749979 measured 90.3 MB arm64-v8a,
@@ -29,22 +35,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Java 17
-        uses: actions/setup-java@v6.3.0
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Flutter 3.47.8
-        uses: subosito/flutter-action@v2.23.0
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: 3.47.8
           cache: true
 
       - name: Cache Gradle
-        uses: actions/cache@v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.gradle/caches
@@ -113,14 +119,14 @@ jobs:
             | sort -k1 -n -r | head -25
 
       - name: Upload debug APKs
-        uses: actions/upload-artifact@v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: laras-debug-apks
           path: build/app/outputs/flutter-apk/*-debug.apk
           retention-days: 14
 
       - name: Upload release APKs (debug-signed, measurement only)
-        uses: actions/upload-artifact@v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: laras-release-apks-debug-signed
           path: build/app/outputs/flutter-apk/*-release.apk
@@ -129,7 +135,7 @@ jobs:
       # Obfuscation mapping for this build, so a crash stack trace from
       # the demo APK can be symbolized with `flutter symbolize`.
       - name: Upload debug symbols
-        uses: actions/upload-artifact@v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: laras-release-symbols
           path: build/app/outputs/symbols

@@ -140,6 +140,63 @@ void main() {
       }
     }, timeout: const Timeout(Duration(minutes: 5)));
 
+    test('resolve 5/5 lagu kanari end-to-end (R1-H1: gg_quickjs)', () async {
+      final InnertubeClient client = InnertubeClient();
+      final QuickJsSignatureSolver solver = QuickJsSignatureSolver();
+      try {
+        final StreamResolver resolver = StreamResolver(
+          innertube: client,
+          solver: solver,
+          configLoader: _DefaultsConfigLoader(prefs: prefs),
+          scriptLoader: PlayerScriptLoader(client: client),
+        );
+        // Satu solver dipakai berurutan untuk kelimanya (mirip pemakaian
+        // nyata: runtime + script player dimuat sekali, dipakai ulang).
+        // Kegagalan JARINGAN (timeout/koneksi, flag isNetworkError)
+        // dicoba ulang sekali — konsisten dengan semantik CanaryChecker
+        // yang mengabaikan kegagalan jaringan saja. Kegagalan lain
+        // (solver, parse, hash) adalah cacat nyata: tanpa retry.
+        final List<String> failures = <String>[];
+        for (final CanarySong song in kCanarySongs) {
+          ExtractorException? lastError;
+          for (var attempt = 0; attempt < 2; attempt++) {
+            try {
+              final ResolvedAudio result =
+                  await resolver.resolve(song.videoId);
+              expect(
+                isAllowedStreamUrl(result.url),
+                isTrue,
+                reason: '${song.videoId}: URL hasil resolve di luar host '
+                    'yang diizinkan',
+              );
+              expect(result.itag, isIn(<int>[139, 140, 249, 250, 251]));
+              lastError = null;
+              break;
+            } on ExtractorException catch (e) {
+              lastError = e;
+              if (!e.isNetworkError) break;
+            }
+          }
+          if (lastError != null) {
+            failures.add(
+              '${song.videoId}: ${lastError.cause} '
+              '${lastError.detail ?? ''}',
+            );
+          }
+        }
+        expect(
+          failures,
+          isEmpty,
+          reason: 'gagal resolve: ${failures.join('; ')}',
+        );
+      } finally {
+        await solver.dispose();
+      }
+      // 30 menit: 5 lagu × egress VM yang lambat/flaky (resolve satu lagu
+      // pernah 2+ menit) — batas lama 10 menit terbukti terlalu pendek
+      // pada 16 Nov 2026 (tes kehabisan waktu, bukan gagal assert).
+    }, timeout: const Timeout(Duration(minutes: 30)));
+
     test('fetch config remote nyata dari GitHub Releases', () async {
       final RemoteConfigLoader loader = RemoteConfigLoader(
         dio: Dio(

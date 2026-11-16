@@ -7,6 +7,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:laras/data/database.dart';
+import 'package:laras/downloads/downloads.dart';
 import 'package:laras/features/library/paged_list.dart';
 import 'package:laras/features/library/play_helpers.dart';
 import 'package:laras/features/library/song_row.dart';
@@ -65,7 +66,9 @@ class CollectionSongsScreen extends StatelessWidget {
             int index,
             List<SongView> items,
           ) {
-            final Track track = view.toTrack();
+            final String? downloadsDir =
+                DownloadsScope.downloadsDirOf(context);
+            final Track track = view.toTrack(downloadsDir: downloadsDir);
             final Track? current = snap.currentTrack;
             final bool isCurrent =
                 current != null && current.videoId == track.videoId;
@@ -83,7 +86,13 @@ class CollectionSongsScreen extends StatelessWidget {
               isBusy: busy,
               onTap: port == null
                   ? null
-                  : () => playSongViews(port, snap, items, index),
+                  : () => playSongViews(
+                      port,
+                      snap,
+                      items,
+                      index,
+                      downloadsDir: downloadsDir,
+                    ),
             );
           },
       emptyIcon: Icons.music_note_outlined,

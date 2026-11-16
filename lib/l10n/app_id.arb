@@ -886,5 +886,179 @@
   "playFailedCannotPlayShort": "Tidak bisa diputar",
   "@playFailedCannotPlayShort": {
     "description": "P0: versi satu baris songCannotPlay untuk mini-player."
+  },
+  "dlDownloading": "Mengunduh",
+  "@dlDownloading": {
+    "description": "P5: judul kelompok job yang sedang mengunduh di tab Unduhan."
+  },
+  "dlWaiting": "Menunggu",
+  "@dlWaiting": {
+    "description": "P5: judul kelompok job antrean di tab Unduhan."
+  },
+  "dlDone": "Selesai",
+  "@dlDone": {
+    "description": "P5: judul kelompok lagu terunduh di tab Unduhan."
+  },
+  "dlFailed": "Gagal",
+  "@dlFailed": {
+    "description": "P5: judul kelompok job gagal di tab Unduhan."
+  },
+  "dlPaused": "Dijeda",
+  "@dlPaused": {
+    "description": "P5: status job unduhan yang dijeda pengguna."
+  },
+  "dlCancelDownload": "Batalkan unduhan",
+  "@dlCancelDownload": {
+    "description": "P5: label tombol batalkan satu unduhan."
+  },
+  "dlPauseDownload": "Jeda unduhan",
+  "@dlPauseDownload": {
+    "description": "P5: label tombol jeda unduhan yang sedang berjalan."
+  },
+  "dlResumeDownload": "Lanjutkan unduhan",
+  "@dlResumeDownload": {
+    "description": "P5: label tombol lanjutkan unduhan yang dijeda atau gagal."
+  },
+  "dlRemoveDownload": "Hapus unduhan",
+  "@dlRemoveDownload": {
+    "description": "P5: label menu hapus satu file unduhan."
+  },
+  "dlDeleteDownloadBody": "{title} akan dihapus dari HP ini. Lagunya tetap ada di Library.",
+  "@dlDeleteDownloadBody": {
+    "description": "P5: isi dialog konfirmasi hapus satu unduhan.",
+    "placeholders": {
+      "title": {
+        "example": "Semua Tentang Kita",
+        "type": "String"
+      }
+    }
+  },
+  "dlDeleteAllDownloads": "Hapus semua unduhan",
+  "@dlDeleteAllDownloads": {
+    "description": "P5: tombol hapus semua file unduhan di layar Penyimpanan."
+  },
+  "dlDeleteAllTitle": "Hapus semua unduhan?",
+  "@dlDeleteAllTitle": {
+    "description": "P5: judul dialog konfirmasi hapus semua unduhan."
+  },
+  "dlDeleteAllBody": "{count} lagu ({size}) akan dihapus dari HP ini. Lagunya tetap ada di Library.",
+  "@dlDeleteAllBody": {
+    "description": "P5: isi dialog konfirmasi hapus semua unduhan, memakai angka nyata.",
+    "placeholders": {
+      "count": {
+        "example": "12",
+        "type": "int"
+      },
+      "size": {
+        "example": "50 MB",
+        "type": "String"
+      }
+    }
+  },
+  "dlAllDownloadsDeleted": "Semua unduhan sudah dihapus.",
+  "@dlAllDownloadsDeleted": {
+    "description": "P5: pesan setelah semua unduhan dihapus."
+  },
+  "dlStorageTitle": "Penyimpanan",
+  "@dlStorageTitle": {
+    "description": "P5: judul layar Penyimpanan."
+  },
+  "dlDownloadedSongs": "Lagu yang diunduh",
+  "@dlDownloadedSongs": {
+    "description": "P5: baris total unduhan di layar Penyimpanan dan judul daftar lagu terunduh."
+  },
+  "dlCacheLimit": "Batas: {size}",
+  "@dlCacheLimit": {
+    "description": "P5: batas ruang lagu yang pernah diputar.",
+    "placeholders": {
+      "size": {
+        "example": "500 MB",
+        "type": "String"
+      }
+    }
+  },
+  "dlFreeSpaceRow": "Sisa ruang HP",
+  "@dlFreeSpaceRow": {
+    "description": "P5: baris sisa ruang penyimpanan HP di layar Penyimpanan."
+  },
+  "dlClearCacheTitle": "Kosongkan ruang ini?",
+  "@dlClearCacheTitle": {
+    "description": "P5: judul dialog konfirmasi hapus ruang lagu yang pernah diputar."
+  },
+  "dlClearCacheBody": "Lagu yang pernah diputar akan dihapus dari HP ini. Unduhan tidak ikut terhapus.",
+  "@dlClearCacheBody": {
+    "description": "P5: isi dialog konfirmasi hapus ruang lagu yang pernah diputar."
+  },
+  "dlProgressOf": "{done} dari {total}",
+  "@dlProgressOf": {
+    "description": "P5: progress unduhan, memakai ukuran nyata.",
+    "placeholders": {
+      "done": {
+        "example": "1,2 MB",
+        "type": "String"
+      },
+      "total": {
+        "example": "4,2 MB",
+        "type": "String"
+      }
+    }
+  },
+  "dlAboutSize": "sekitar {size}",
+  "@dlAboutSize": {
+    "description": "P5: perkiraan ukuran file di dialog pilih kualitas.",
+    "placeholders": {
+      "size": {
+        "example": "4,2 MB",
+        "type": "String"
+      }
+    }
+  },
+  "dlQueued": "Ditambahkan ke antrean unduhan.",
+  "@dlQueued": {
+    "description": "P5: pesan setelah lagu ditambahkan ke antrean unduhan."
+  },
+  "dlMissingDownloads": "{count} file unduhan tidak ditemukan lagi di HP ini.",
+  "@dlMissingDownloads": {
+    "description": "P5: snackbar rekonsiliasi saat beberapa file unduhan hilang.",
+    "placeholders": {
+      "count": {
+        "example": "3",
+        "type": "int"
+      }
+    }
+  },
+  "dlMissingDownloadOne": "1 file unduhan tidak ditemukan lagi di HP ini.",
+  "@dlMissingDownloadOne": {
+    "description": "P5: snackbar rekonsiliasi saat satu file unduhan hilang."
+  },
+  "dlDownloadedCount": "{count} lagu terunduh",
+  "@dlDownloadedCount": {
+    "description": "P5: jumlah lagu terunduh di seksi Unduhan beranda.",
+    "placeholders": {
+      "count": {
+        "example": "12",
+        "type": "int"
+      }
+    }
+  },
+  "dlStorageFullJob": "Ruang HP penuh. Kosongkan ruang dulu, lalu coba lagi.",
+  "@dlStorageFullJob": {
+    "description": "P5: pesan job unduhan gagal karena ruang penuh."
+  },
+  "dlNetworkJobFailed": "Unduhan gagal karena koneksi. Coba lagi saat internet lebih stabil.",
+  "@dlNetworkJobFailed": {
+    "description": "P5: pesan job unduhan gagal karena jaringan."
+  },
+  "dlUnplayableJobFailed": "Lagu ini tidak bisa diunduh sekarang. Coba lagu lain.",
+  "@dlUnplayableJobFailed": {
+    "description": "P5: pesan job unduhan gagal karena lagu tidak tersedia."
+  },
+  "dlDownloadQualityTitle": "Pilih kualitas unduhan",
+  "@dlDownloadQualityTitle": {
+    "description": "P5: judul dialog pilih kualitas sebelum mengunduh."
+  },
+  "dlNoFreeSpaceInfo": "Sisa ruang tidak bisa dibaca di HP ini.",
+  "@dlNoFreeSpaceInfo": {
+    "description": "P5: keterangan saat sisa ruang HP tidak bisa dibaca."
   }
 }

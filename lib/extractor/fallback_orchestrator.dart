@@ -59,6 +59,7 @@ import 'itag_picker.dart';
 import 'models.dart';
 import 'remote_config.dart';
 import 'resolver.dart';
+import 'url_allowlist.dart';
 
 /// Orkestrator resolve + fallback.
 class StreamResolver implements AudioResolver {
@@ -154,9 +155,14 @@ class StreamResolver implements AudioResolver {
     // script yang bisa dipakai saat ini.
     int? signatureTimestamp = _scriptLoader.cached?.signatureTimestamp;
     ExtractorException? scriptError;
+    // R1-M2: allowlist hash player dari config remote (atau bawaan bila
+    // config tidak membawa hash) — diteruskan ke semua pemuatan script.
+    final Set<String> allowedHashes = config.playerHashes.keys.toSet();
     if (signatureTimestamp == null) {
       try {
-        final PlayerScript script = await _scriptLoader.load();
+        final PlayerScript script = await _scriptLoader.load(
+          allowedHashes: allowedHashes,
+        );
         signatureTimestamp = script.signatureTimestamp;
       } on ExtractorException catch (e) {
         scriptError = e;
@@ -196,6 +202,7 @@ class StreamResolver implements AudioResolver {
           client,
           dataSaver: dataSaver,
           signatureTimestamp: signatureTimestamp,
+          allowedHashes: allowedHashes,
         );
         _appendLog(
           videoId: videoId,
@@ -294,6 +301,7 @@ class StreamResolver implements AudioResolver {
     ClientDefinition client, {
     required bool dataSaver,
     required int? signatureTimestamp,
+    required Set<String> allowedHashes,
   }) async {
     ParsedPlayerResponse parsed = await _innertube.fetchPlayer(
       videoId,
@@ -305,7 +313,9 @@ class StreamResolver implements AudioResolver {
       final String? freshVd = await _innertube.refreshVisitorData(client);
       int? sts = signatureTimestamp;
       try {
-        final PlayerScript script = await _scriptLoader.load();
+        final PlayerScript script = await _scriptLoader.load(
+          allowedHashes: allowedHashes,
+        );
         sts = script.signatureTimestamp;
       } on ExtractorException {
         // Script gagal dimuat: ulangi dengan sts lama (atau tanpa sts).
@@ -347,9 +357,20 @@ class StreamResolver implements AudioResolver {
       );
     }
     if (format.hasDirectUrl) {
+      // R1-M1: URL langsung dari respons player adalah data jaringan —
+      // tolak sebelum masuk ResolvedAudio bila host-nya bukan
+      // googlevideo.com (client berikutnya dicoba lewat exception ini).
+      final String directUrl = format.url!;
+      if (!isAllowedStreamUrl(directUrl)) {
+        throw ExtractorException(
+          ResolveFailureCause.parseFailed,
+          clientName: client.name,
+          detail: 'URL langsung di luar host yang diizinkan',
+        );
+      }
       return ResolvedAudio(
         videoId: videoId,
-        url: format.url!,
+        url: directUrl,
         itag: format.itag,
         mimeType: format.mimeType,
         bitrate: format.bitrate,
@@ -360,11 +381,24 @@ class StreamResolver implements AudioResolver {
       );
     }
     // Format cipher: muat script player lalu solver QuickJS.
-    final PlayerScript script = await _scriptLoader.load();
+    final PlayerScript script = await _scriptLoader.load(
+      allowedHashes: allowedHashes,
+    );
     final String finalUrl = await _solver.solve(
       script: script,
       format: format,
     );
+    // R1-M1 (titik cek kedua, defense in depth): solver sudah memvalidasi
+    // hasilnya sendiri, tapi orkestrator adalah satu-satunya pintu
+    // pembuatan ResolvedAudio — validasi ulang di sini supaya solver
+    // pengganti di masa depan tidak bisa meloloskan host liar.
+    if (!isAllowedStreamUrl(finalUrl)) {
+      throw ExtractorException(
+        ResolveFailureCause.parseFailed,
+        clientName: client.name,
+        detail: 'URL hasil solver di luar host yang diizinkan',
+      );
+    }
     return ResolvedAudio(
       videoId: videoId,
       url: finalUrl,

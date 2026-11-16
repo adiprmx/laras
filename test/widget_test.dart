@@ -61,13 +61,15 @@ void main() {
     expect(find.text(strings.searchHint), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
 
-    // Tab Unduhan menampilkan layar "Segera hadir".
+    // Tab Unduhan menampilkan pesan jujur saat layanan tidak tersedia
+    // (P5 menggantikan layar "Segera hadir" dengan tab unduhan
+    // sungguhan; tes ini memompa LarasApp tanpa layanan apa pun).
     await tester.tap(
       find.descendant(of: tabBar, matching: find.text(strings.tabDownloads)),
     );
     await tester.pumpAndSettle();
-    expect(find.text(strings.comingSoon), findsOneWidget);
-    expect(find.text(strings.downloadsComingSoonBody), findsOneWidget);
+    expect(find.text(strings.libraryFailed), findsOneWidget);
+    expect(find.text(strings.downloadsEmptyBody), findsOneWidget);
 
     // Tab Library menampilkan empty state dan ikon gerigi Pengaturan.
     await tester.tap(

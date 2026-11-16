@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Network Security Config (R1-L3, rencana §3.1).
+     Deklarasi eksplisit dari perilaku yang sudah menjadi default platform
+     (API 24+: cleartext ditolak, user CA tidak dipercaya) — niatnya
+     tercatat dan tidak bergantung pada default yang bisa berubah.
+     Tidak ada perubahan perilaku dari config ini.
+     CAVEAT PENTING: config ini hanya berlaku untuk lalu lintas jaringan
+     PLATFORM (URLConnection/OkHttp, termasuk ExoPlayer yang memutar
+     audio). Lalu lintas Dio (dart:io HttpClient, BoringSSL sendiri)
+     TIDAK membaca Network Security Config — TLS Dio ditegakkan oleh
+     Dart sendiri (sertifikat sistem, tanpa user CA, tanpa cleartext
+     karena semua URL app adalah HTTPS yang divalidasi allowlist host).
+     Jangan mengira config ini melindungi jalur Dio. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <!-- Build debug saja: izinkan user CA supaya pengujian proxy
+         (mitmproxy/Charles) di pengembangan tetap bisa jalan.
+         Elemen ini tidak berlaku untuk build rilis. -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>

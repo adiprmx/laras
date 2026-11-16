@@ -149,4 +149,46 @@ void main() {
       expect(parseSearchResponse(json).length, 1);
     });
   });
+
+  group('cap item parser (R1-M3)', () {
+    test('150 format audio -> paling banyak 100', () {
+      final Map<String, dynamic> json = <String, dynamic>{
+        'playabilityStatus': <String, dynamic>{'status': 'OK'},
+        'streamingData': <String, dynamic>{
+          'adaptiveFormats': <dynamic>[
+            for (int i = 0; i < 150; i++)
+              <String, dynamic>{
+                'itag': 1000 + i,
+                'mimeType': 'audio/webm; codecs="opus"',
+                'bitrate': 160000,
+                'url':
+                    'https://rr1---sn-x.googlevideo.com/videoplayback?itag=251',
+              },
+          ],
+        },
+        'videoDetails': <String, dynamic>{
+          'title': 'Lagu',
+          'lengthSeconds': '200',
+        },
+      };
+      final ParsedPlayerResponse parsed = parsePlayerResponse(json);
+      expect(parsed.audioFormats.length, 100);
+      expect(parsed.audioFormats.first.itag, 1000);
+      expect(parsed.audioFormats.last.itag, 1099);
+    });
+
+    test('150 videoId di pohon search -> paling banyak 100', () {
+      final Map<String, dynamic> json = <String, dynamic>{
+        'contents': <dynamic>[
+          for (int i = 0; i < 150; i++)
+            <String, dynamic>{
+              'videoId': 'vid${i.toString().padLeft(8, '0')}',
+              'title': <String, dynamic>{'simpleText': 'Lagu $i'},
+            },
+        ],
+      };
+      final List<SearchSong> songs = parseSearchResponse(json);
+      expect(songs.length, 100);
+    });
+  });
 }

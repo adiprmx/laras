@@ -271,4 +271,164 @@ void main() {
       },
     );
   });
+
+  group('cap item parser + validasi thumbnail (R1-M3, R1-L2)', () {
+    Map<String, dynamic> songItem(int i, {String? thumbnailUrl}) {
+      return <String, dynamic>{
+        'musicResponsiveListItemRenderer': <String, dynamic>{
+          'playlistItemData': <String, dynamic>{
+            'videoId': 'vid${i.toString().padLeft(8, '0')}',
+          },
+          'flexColumns': <dynamic>[
+            <String, dynamic>{
+              'musicResponsiveListItemFlexColumnRenderer':
+                  <String, dynamic>{
+                    'text': <String, dynamic>{'simpleText': 'Lagu $i'},
+                  },
+            },
+            <String, dynamic>{
+              'musicResponsiveListItemFlexColumnRenderer':
+                  <String, dynamic>{
+                    'text': <String, dynamic>{
+                      'simpleText': 'Song • Artis $i',
+                    },
+                  },
+            },
+          ],
+          if (thumbnailUrl != null)
+            'thumbnail': <String, dynamic>{
+              'musicThumbnailRenderer': <String, dynamic>{
+                'thumbnail': <String, dynamic>{
+                  'thumbnails': <dynamic>[
+                    <String, dynamic>{
+                      'url': thumbnailUrl,
+                      'width': 60,
+                      'height': 60,
+                    },
+                  ],
+                },
+              },
+            },
+        },
+      };
+    }
+
+    Map<String, dynamic> searchJsonWithItems(
+      List<Map<String, dynamic>> items,
+    ) {
+      return <String, dynamic>{
+        'contents': <String, dynamic>{
+          'tabbedSearchResultsRenderer': <String, dynamic>{
+            'tabs': <dynamic>[
+              <String, dynamic>{
+                'tabRenderer': <String, dynamic>{
+                  'selected': true,
+                  'content': <String, dynamic>{
+                    'sectionListRenderer': <String, dynamic>{
+                      'contents': <dynamic>[
+                        <String, dynamic>{
+                          'musicShelfRenderer': <String, dynamic>{
+                            'contents': items,
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      };
+    }
+
+    Map<String, dynamic> searchJsonWithSongs(int count) {
+      return searchJsonWithItems(
+        <Map<String, dynamic>>[for (int i = 0; i < count; i++) songItem(i)],
+      );
+    }
+
+    test('150 lagu di satu rak -> paling banyak 100', () {
+      final GroupedSearchResults results =
+          parseGroupedSearchResults(searchJsonWithSongs(150));
+      expect(results.songs.length, 100);
+      // Semua videoId unik (tidak ada duplikat akibat cap).
+      expect(
+        results.songs.map((SearchSong s) => s.videoId).toSet().length,
+        100,
+      );
+      // Catatan: _collectListItems memakai stack DFS sehingga urutan
+      // traversal terbalik dari urutan dokumen (perilaku parser lama,
+      // bukan bagian kontrak cap) — cap menyimpan 100 pertama dalam
+      // urutan traversal itu (item 149..50).
+      expect(results.songs.first.videoId, 'vid00000149');
+      expect(results.songs.last.videoId, 'vid00000050');
+    });
+
+    test('99 lagu tetap utuh (cap tidak memotong hasil sah)', () {
+      final GroupedSearchResults results =
+          parseGroupedSearchResults(searchJsonWithSongs(99));
+      expect(results.songs.length, 99);
+    });
+
+    test('thumbnail dari host liar -> null (UI pakai placeholder)', () {
+      final GroupedSearchResults results = parseGroupedSearchResults(
+        searchJsonWithItems(<Map<String, dynamic>>[
+          songItem(0, thumbnailUrl: 'https://evil.example/x.jpg'),
+          songItem(1, thumbnailUrl: 'https://i.ytimg.com/vi/x/hq.jpg'),
+          songItem(2, thumbnailUrl: 'http://i.ytimg.com/vi/x/hq.jpg'),
+        ]),
+      );
+      expect(results.songs.length, 3);
+      expect(results.songs[0].thumbnailUrl, isNull);
+      expect(
+        results.songs[1].thumbnailUrl,
+        'https://i.ytimg.com/vi/x/hq.jpg',
+      );
+      expect(results.songs[2].thumbnailUrl, isNull);
+    });
+
+    test('150 saran -> paling banyak 100', () {
+      final List<String> out = parseSearchSuggestions(<String, dynamic>{
+        'contents': <dynamic>[
+          for (int i = 0; i < 150; i++)
+            <String, dynamic>{
+              'searchSuggestionRenderer': <String, dynamic>{
+                'suggestion': <String, dynamic>{
+                  'simpleText': 'saran $i',
+                },
+              },
+            },
+        ],
+      });
+      expect(out.length, 100);
+      expect(out.first, 'saran 0');
+      expect(out.last, 'saran 99');
+    });
+
+    test('playlist browse 150 lagu -> paling banyak 100', () {
+      final Map<String, dynamic> json = <String, dynamic>{
+        'contents': <String, dynamic>{
+          'twoColumnBrowseResultsRenderer': <String, dynamic>{
+            'secondaryContents': <String, dynamic>{
+              'sectionListRenderer': <String, dynamic>{
+                'contents': <dynamic>[
+                  <String, dynamic>{
+                    'musicPlaylistShelfRenderer': <String, dynamic>{
+                      'contents': <dynamic>[
+                        for (int i = 0; i < 150; i++) songItem(i),
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      };
+      final BrowsePage page = parseBrowsePage(json);
+      expect(page.shelves.length, 1);
+      expect(page.shelves.first.items.length, 100);
+    });
+  });
 }

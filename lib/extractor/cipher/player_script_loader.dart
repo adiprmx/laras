@@ -25,6 +25,8 @@ import 'dart:async';
 
 import '../errors.dart';
 import '../innertube_client.dart';
+import '../remote_config.dart';
+import '../response_limits.dart';
 import 'player_script.dart';
 
 /// Mengunduh dan mengekstrak script player, dengan cache memori per hash.
@@ -45,12 +47,33 @@ class PlayerScriptLoader {
   /// Muat script player yang berlaku saat ini.
   ///
   /// [forceRefresh] mengabaikan cache dan mengunduh ulang dari HTML.
-  /// Melempar [ExtractorException] penyebab unknownPlayerHash bila
-  /// ekstraksi gagal, atau emptyResponse bila jaringan gagal.
-  Future<PlayerScript> load({bool forceRefresh = false}) {
+  /// [allowedHashes] adalah allowlist hash player (dari config remote);
+  /// null atau kosong berarti pakai hash bawaan ([kBuiltinPlayerHashes]).
+  /// Hash yang tidak ada di allowlist DITOLAK SEBELUM base.js diunduh,
+  /// apalagi dieksekusi (R1-M2, rencana §3.4): base.js dengan hash tak
+  /// dikenal tidak pernah mencapai solver. Melempar [ExtractorException]
+  /// penyebab unknownPlayerHash bila hash tidak dikenal atau ekstraksi
+  /// gagal, atau emptyResponse bila jaringan gagal.
+  Future<PlayerScript> load({
+    bool forceRefresh = false,
+    Set<String>? allowedHashes,
+  }) {
+    final Set<String> allowed = _effectiveAllowlist(allowedHashes);
     final Future<PlayerScript>? inFlight = _inFlight;
-    if (inFlight != null) return inFlight;
-    final Future<PlayerScript> job = _load(forceRefresh: forceRefresh);
+    if (inFlight != null) {
+      // Single-flight: pemanggil lain menunggu job yang sama — tapi job
+      // itu digerbang dengan allowlist pemanggil pertama, jadi hasilnya
+      // diperiksa ulang terhadap allowlist pemanggil ini sebelum
+      // dikembalikan.
+      return inFlight.then((PlayerScript script) {
+        _requireAllowed(script.hash, allowed);
+        return script;
+      });
+    }
+    final Future<PlayerScript> job = _load(
+      forceRefresh: forceRefresh,
+      allowedHashes: allowed,
+    );
     _inFlight = job;
     // Single-flight: pemanggil lain menunggu job yang sama.
     // then<void> dengan badan blok (bukan whenComplete dan bukan arrow):
@@ -72,7 +95,10 @@ class PlayerScriptLoader {
     return job;
   }
 
-  Future<PlayerScript> _load({required bool forceRefresh}) async {
+  Future<PlayerScript> _load({
+    required bool forceRefresh,
+    required Set<String> allowedHashes,
+  }) async {
     final PlayerScript? cached = _cached;
     // HTML youtube.com memberi jsUrl terbaru (hash bisa berubah tiap rilis
     // player, biasanya beberapa hari sekali).
@@ -81,12 +107,17 @@ class PlayerScriptLoader {
     // akan membunuhnya.
     final String html = await _client.fetchText(
       'https://www.youtube.com/',
-      maxBytes: 4 * 1024 * 1024,
+      maxBytes: ResponseLimits.youtubeHtmlBytes,
       timeout: const Duration(seconds: 60),
     );
     final String? jsUrl = extractJsUrl(html);
     if (jsUrl == null) {
-      if (cached != null) return cached;
+      // Hash cache diperiksa ulang: hash yang sudah dicabut dari
+      // allowlist (config remote terbaru) tidak boleh dipakai lagi
+      // walau script-nya masih tersimpan di memori.
+      if (cached != null && allowedHashes.contains(cached.hash)) {
+        return cached;
+      }
       throw const ExtractorException(
         ResolveFailureCause.unknownPlayerHash,
         detail: 'jsUrl tidak ketemu di HTML youtube.com',
@@ -94,20 +125,35 @@ class PlayerScriptLoader {
     }
     final String? hash = extractPlayerHash(jsUrl);
     if (!forceRefresh && cached != null && hash == cached.hash) {
-      return cached;
+      if (allowedHashes.contains(cached.hash)) return cached;
+      // Cache-nya sudah tidak diizinkan: lanjut ke gerbang di bawah
+      // (hash yang sama akan ditolak sebelum mengunduh).
+    }
+    // R1-M2 — GERBANG HASH: hash dari jsUrl diperiksa SEBELUM base.js
+    // diunduh. Hash tak dikenal = player baru yang belum ditinjau =
+    // tidak diunduh, tidak diekstrak, tidak dieksekusi. Hash baru masuk
+    // lewat config remote (playerHashes), bukan lewat rilis app.
+    // Konsisten dengan fallback non-tcl P0: varian tcl dan non-tcl
+    // memakai hash yang SAMA, jadi gerbang ini tidak membedakan keduanya
+    // — yang dieksekusi selalu varian non-tcl karena varian tcl gagal
+    // di ekstraksi (di bawah) sebelum mencapai solver.
+    if (hash == null || !allowedHashes.contains(hash)) {
+      throw const ExtractorException(
+        ResolveFailureCause.unknownPlayerHash,
+        detail: 'hash player tidak ada di daftar yang dikenal',
+      );
     }
     // Timeout 90 detik (dinaikkan dari 60 di P0): unduh base.js 2,9 MB
     // yang sah dari VM memakan 52 detik di probe 16 Nov 2026 - margin
     // timeout 60 detik terlalu tipis untuk jaringan lambat.
     final String baseJs = await _client.fetchText(
       'https://www.youtube.com$jsUrl',
-      maxBytes: 8 * 1024 * 1024,
+      maxBytes: ResponseLimits.playerScriptBytes,
       timeout: const Duration(seconds: 90),
     );
+    PlayerScript script;
     try {
-      final PlayerScript script = buildPlayerScript(jsUrl, baseJs);
-      _cached = script;
-      return script;
+      script = buildPlayerScript(jsUrl, baseJs);
     } on ExtractorException catch (e) {
       // Hanya kegagalan EKSTRAKSI yang memicu fallback varian. Kegagalan
       // jaringan tidak ditangkap di sini (fetchText sudah melempar
@@ -117,12 +163,37 @@ class PlayerScriptLoader {
       if (fallbackUrl == null) rethrow;
       final String fallbackJs = await _client.fetchText(
         'https://www.youtube.com$fallbackUrl',
-        maxBytes: 8 * 1024 * 1024,
+        maxBytes: ResponseLimits.playerScriptBytes,
         timeout: const Duration(seconds: 90),
       );
-      final PlayerScript script = buildPlayerScript(fallbackUrl, fallbackJs);
-      _cached = script;
-      return script;
+      script = buildPlayerScript(fallbackUrl, fallbackJs);
+    }
+    // Defense in depth (di luar try fallback: gagal gerbang TIDAK boleh
+    // memicu unduh varian — hash-nya sama, hasilnya akan sama): hash
+    // hasil ekstraksi harus sama dengan hash yang sudah digerbang.
+    _requireAllowed(script.hash, allowedHashes);
+    _cached = script;
+    return script;
+  }
+
+  /// Allowlist efektif: yang diberikan pemanggil bila tidak kosong,
+  /// kalau tidak hash bawaan. Config remote yang tidak membawa hash
+  /// (kolom kosong) tidak boleh mematikan semua pemutaran — bawaan
+  /// adalah hash yang sudah ditinjau.
+  static Set<String> _effectiveAllowlist(Set<String>? allowedHashes) {
+    if (allowedHashes == null || allowedHashes.isEmpty) {
+      return kBuiltinPlayerHashes.keys.toSet();
+    }
+    return allowedHashes;
+  }
+
+  /// Lempar unknownPlayerHash bila [hash] tidak ada di [allowed].
+  static void _requireAllowed(String hash, Set<String> allowed) {
+    if (!allowed.contains(hash)) {
+      throw const ExtractorException(
+        ResolveFailureCause.unknownPlayerHash,
+        detail: 'hash player tidak ada di daftar yang dikenal',
+      );
     }
   }
 

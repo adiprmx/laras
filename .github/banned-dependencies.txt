@@ -1,0 +1,42 @@
+# Daftar larangan dependensi — dibaca mesin oleh .github/workflows/vulncheck.yml.
+#
+# Sumber: rencana keamanan §5.2 (larangan proprietary untuk build F-Droid)
+# + R1-H1 (mesin JS yang rentan). CI GAGAL bila ada entri yang ditemukan.
+#
+# Format: <jenis>:<nama> — satu per baris, komentar diawali '#'.
+#   pub:<nama-paket>    dicocokkan sebagai entri tingkat atas di pubspec.lock
+#                       (baris "  <nama-paket>:").
+#   gradle:<grup/maven> dicocokkan sebagai substring di file Gradle android/
+#                       (*.kts, *.gradle, *.toml).
+#
+# Firebase (semua bentuk; app ini tanpa tracker/server sama sekali):
+pub:firebase_core
+pub:firebase_analytics
+pub:firebase_crashlytics
+pub:firebase_messaging
+pub:firebase_remote_config
+pub:firebase_performance
+pub:firebase_app_check
+gradle:com.google.firebase
+gradle:com.google.gms.google-services
+# Google Play Services / GMS (dan library yang bergantung padanya):
+gradle:com.google.android.gms
+pub:google_sign_in
+# Crash reporting proprietary (crash report memakai salin log manual):
+pub:sentry
+pub:sentry_flutter
+pub:bugsnag
+pub:bugsnag_flutter
+pub:instabug
+# Analytics apa pun:
+pub:mixpanel_flutter
+pub:amplitude_flutter
+pub:posthog_flutter
+# SDK iklan apa pun:
+pub:google_mobile_ads
+# Mesin JS rentan (R1-H1): quickjs_engine 0.1.7 membundel QuickJS-NG
+# 0.14.0 (CVE-2026-120438/120439/120440, diperbaiki di 0.16.0) dan tidak
+# punya versi baru. Penggantinya gg_quickjs (QuickJS-ng 0.17.0).
+# CATATAN: entri ini membuat job vulncheck MERAH sampai migrasi H1
+# mendarat — itu sinyal yang benar, bukan kerusakan workflow.
+pub:quickjs_engine

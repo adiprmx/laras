@@ -33,6 +33,11 @@ abstract final class DownloadJobStatus {
   static const int running = 1;
   static const int paused = 2;
   static const int failed = 3;
+
+  /// Selesai: file sudah di-rename dan lagu ditandai terunduh. Baris
+  /// dipertahankan sampai pembersihan 7 hari (PRD B3.2) supaya tab
+  /// Unduhan bisa menampilkan kelompok "Selesai".
+  static const int completed = 4;
 }
 
 /// Satu lagu yang dikenal app, baik dari YouTube Music maupun file lokal.
@@ -323,6 +328,12 @@ class CacheEntries extends Table {
 
 /// Pekerjaan unduhan yang sedang berjalan, agar bisa dilanjutkan setelah
 /// restart (P5 mengisi tabel ini).
+///
+/// Kolom `quality`, `attempts`, dan `createdAt` ditambahkan di skema v2
+/// (P5): PRD B3.2 menetapkan job membawa kualitas, jumlah percobaan, dan
+/// waktu dibuat. Ketiganya nullable/ber-default supaya migrasi dari v1
+/// tidak butuh nilai buatan untuk baris lama (job v1 tidak pernah dibuat
+/// di perangkat nyata karena P5 belum ada saat v1 dirilis).
 class DownloadJobs extends Table {
   TextColumn get songId =>
       text().references(Songs, #id, onDelete: KeyAction.cascade)();
@@ -330,11 +341,24 @@ class DownloadJobs extends Table {
   /// Lihat [DownloadJobStatus].
   IntColumn get status => integer()();
 
+  /// Kualitas unduhan sebagai itag yang dipilih
+  /// (251 Terbaik, 140 Seimbang, 249/139 Hemat data; lihat
+  /// `DownloadQuality` di lib/downloads). Null berarti kualitas tidak
+  /// diketahui (job dari skema v1).
+  IntColumn get quality => integer().nullable()();
+
   IntColumn get bytesDownloaded => integer().withDefault(const Constant(0))();
 
   IntColumn get totalBytes => integer().nullable()();
 
+  /// Jumlah percobaan unduh yang sudah dipakai (maks 3, PRD B3.2).
+  IntColumn get attempts => integer().withDefault(const Constant(0))();
+
   TextColumn get errorMessage => text().nullable()();
+
+  /// Waktu job dibuat: penentu urutan antrean FIFO. Null untuk job v1
+  /// (diperlakukan sebagai yang paling tua).
+  DateTimeColumn get createdAt => dateTime().nullable()();
 
   DateTimeColumn get updatedAt => dateTime()();
 

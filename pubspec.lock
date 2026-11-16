@@ -349,6 +349,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  gg_quickjs:
+    dependency: "direct main"
+    description:
+      name: gg_quickjs
+      sha256: "9c25a3b090b41f5e971b436a35ada97bb2828141cb272f37d511b5f8868d8f98"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.0"
   glob:
     dependency: transitive
     description:
@@ -717,14 +725,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.7.0"
-  quickjs_engine:
-    dependency: "direct main"
-    description:
-      name: quickjs_engine
-      sha256: "76fd249a53e5505111596231d4667c464bb8f19d029dde53f5d13f37b6a6bffb"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.1.7"
   recase:
     dependency: transitive
     description:
@@ -946,14 +946,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.1"
-  sync_http:
-    dependency: transitive
-    description:
-      name: sync_http
-      sha256: "7f0cd72eca000d2e026bcd6f990b81d0ca06022ef4e32fb257b30d3d1014a961"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.3.1"
   synchronized:
     dependency: transitive
     description:

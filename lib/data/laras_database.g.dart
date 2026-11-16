@@ -5821,6 +5821,17 @@ class $DownloadJobsTable extends DownloadJobs
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _qualityMeta = const VerificationMeta(
+    'quality',
+  );
+  @override
+  late final GeneratedColumn<int> quality = GeneratedColumn<int>(
+    'quality',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _bytesDownloadedMeta = const VerificationMeta(
     'bytesDownloaded',
   );
@@ -5844,6 +5855,18 @@ class $DownloadJobsTable extends DownloadJobs
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _attemptsMeta = const VerificationMeta(
+    'attempts',
+  );
+  @override
+  late final GeneratedColumn<int> attempts = GeneratedColumn<int>(
+    'attempts',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _errorMessageMeta = const VerificationMeta(
     'errorMessage',
   );
@@ -5853,6 +5876,17 @@ class $DownloadJobsTable extends DownloadJobs
     aliasedName,
     true,
     type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
@@ -5870,9 +5904,12 @@ class $DownloadJobsTable extends DownloadJobs
   List<GeneratedColumn> get $columns => [
     songId,
     status,
+    quality,
     bytesDownloaded,
     totalBytes,
+    attempts,
     errorMessage,
+    createdAt,
     updatedAt,
   ];
   @override
@@ -5903,6 +5940,12 @@ class $DownloadJobsTable extends DownloadJobs
     } else if (isInserting) {
       context.missing(_statusMeta);
     }
+    if (data.containsKey('quality')) {
+      context.handle(
+        _qualityMeta,
+        quality.isAcceptableOrUnknown(data['quality']!, _qualityMeta),
+      );
+    }
     if (data.containsKey('bytes_downloaded')) {
       context.handle(
         _bytesDownloadedMeta,
@@ -5918,6 +5961,12 @@ class $DownloadJobsTable extends DownloadJobs
         totalBytes.isAcceptableOrUnknown(data['total_bytes']!, _totalBytesMeta),
       );
     }
+    if (data.containsKey('attempts')) {
+      context.handle(
+        _attemptsMeta,
+        attempts.isAcceptableOrUnknown(data['attempts']!, _attemptsMeta),
+      );
+    }
     if (data.containsKey('error_message')) {
       context.handle(
         _errorMessageMeta,
@@ -5925,6 +5974,12 @@ class $DownloadJobsTable extends DownloadJobs
           data['error_message']!,
           _errorMessageMeta,
         ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
     if (data.containsKey('updated_at')) {
@@ -5952,6 +6007,10 @@ class $DownloadJobsTable extends DownloadJobs
         DriftSqlType.int,
         data['${effectivePrefix}status'],
       )!,
+      quality: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}quality'],
+      ),
       bytesDownloaded: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}bytes_downloaded'],
@@ -5960,9 +6019,17 @@ class $DownloadJobsTable extends DownloadJobs
         DriftSqlType.int,
         data['${effectivePrefix}total_bytes'],
       ),
+      attempts: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}attempts'],
+      )!,
       errorMessage: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}error_message'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
       ),
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
@@ -5982,16 +6049,32 @@ class DownloadJob extends DataClass implements Insertable<DownloadJob> {
 
   /// Lihat [DownloadJobStatus].
   final int status;
+
+  /// Kualitas unduhan sebagai itag yang dipilih
+  /// (251 Terbaik, 140 Seimbang, 249/139 Hemat data; lihat
+  /// `DownloadQuality` di lib/downloads). Null berarti kualitas tidak
+  /// diketahui (job dari skema v1).
+  final int? quality;
   final int bytesDownloaded;
   final int? totalBytes;
+
+  /// Jumlah percobaan unduh yang sudah dipakai (maks 3, PRD B3.2).
+  final int attempts;
   final String? errorMessage;
+
+  /// Waktu job dibuat: penentu urutan antrean FIFO. Null untuk job v1
+  /// (diperlakukan sebagai yang paling tua).
+  final DateTime? createdAt;
   final DateTime updatedAt;
   const DownloadJob({
     required this.songId,
     required this.status,
+    this.quality,
     required this.bytesDownloaded,
     this.totalBytes,
+    required this.attempts,
     this.errorMessage,
+    this.createdAt,
     required this.updatedAt,
   });
   @override
@@ -5999,12 +6082,19 @@ class DownloadJob extends DataClass implements Insertable<DownloadJob> {
     final map = <String, Expression>{};
     map['song_id'] = Variable<String>(songId);
     map['status'] = Variable<int>(status);
+    if (!nullToAbsent || quality != null) {
+      map['quality'] = Variable<int>(quality);
+    }
     map['bytes_downloaded'] = Variable<int>(bytesDownloaded);
     if (!nullToAbsent || totalBytes != null) {
       map['total_bytes'] = Variable<int>(totalBytes);
     }
+    map['attempts'] = Variable<int>(attempts);
     if (!nullToAbsent || errorMessage != null) {
       map['error_message'] = Variable<String>(errorMessage);
+    }
+    if (!nullToAbsent || createdAt != null) {
+      map['created_at'] = Variable<DateTime>(createdAt);
     }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -6014,13 +6104,20 @@ class DownloadJob extends DataClass implements Insertable<DownloadJob> {
     return DownloadJobsCompanion(
       songId: Value(songId),
       status: Value(status),
+      quality: quality == null && nullToAbsent
+          ? const Value.absent()
+          : Value(quality),
       bytesDownloaded: Value(bytesDownloaded),
       totalBytes: totalBytes == null && nullToAbsent
           ? const Value.absent()
           : Value(totalBytes),
+      attempts: Value(attempts),
       errorMessage: errorMessage == null && nullToAbsent
           ? const Value.absent()
           : Value(errorMessage),
+      createdAt: createdAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdAt),
       updatedAt: Value(updatedAt),
     );
   }
@@ -6033,9 +6130,12 @@ class DownloadJob extends DataClass implements Insertable<DownloadJob> {
     return DownloadJob(
       songId: serializer.fromJson<String>(json['songId']),
       status: serializer.fromJson<int>(json['status']),
+      quality: serializer.fromJson<int?>(json['quality']),
       bytesDownloaded: serializer.fromJson<int>(json['bytesDownloaded']),
       totalBytes: serializer.fromJson<int?>(json['totalBytes']),
+      attempts: serializer.fromJson<int>(json['attempts']),
       errorMessage: serializer.fromJson<String?>(json['errorMessage']),
+      createdAt: serializer.fromJson<DateTime?>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -6045,9 +6145,12 @@ class DownloadJob extends DataClass implements Insertable<DownloadJob> {
     return <String, dynamic>{
       'songId': serializer.toJson<String>(songId),
       'status': serializer.toJson<int>(status),
+      'quality': serializer.toJson<int?>(quality),
       'bytesDownloaded': serializer.toJson<int>(bytesDownloaded),
       'totalBytes': serializer.toJson<int?>(totalBytes),
+      'attempts': serializer.toJson<int>(attempts),
       'errorMessage': serializer.toJson<String?>(errorMessage),
+      'createdAt': serializer.toJson<DateTime?>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
@@ -6055,31 +6158,40 @@ class DownloadJob extends DataClass implements Insertable<DownloadJob> {
   DownloadJob copyWith({
     String? songId,
     int? status,
+    Value<int?> quality = const Value.absent(),
     int? bytesDownloaded,
     Value<int?> totalBytes = const Value.absent(),
+    int? attempts,
     Value<String?> errorMessage = const Value.absent(),
+    Value<DateTime?> createdAt = const Value.absent(),
     DateTime? updatedAt,
   }) => DownloadJob(
     songId: songId ?? this.songId,
     status: status ?? this.status,
+    quality: quality.present ? quality.value : this.quality,
     bytesDownloaded: bytesDownloaded ?? this.bytesDownloaded,
     totalBytes: totalBytes.present ? totalBytes.value : this.totalBytes,
+    attempts: attempts ?? this.attempts,
     errorMessage: errorMessage.present ? errorMessage.value : this.errorMessage,
+    createdAt: createdAt.present ? createdAt.value : this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
   DownloadJob copyWithCompanion(DownloadJobsCompanion data) {
     return DownloadJob(
       songId: data.songId.present ? data.songId.value : this.songId,
       status: data.status.present ? data.status.value : this.status,
+      quality: data.quality.present ? data.quality.value : this.quality,
       bytesDownloaded: data.bytesDownloaded.present
           ? data.bytesDownloaded.value
           : this.bytesDownloaded,
       totalBytes: data.totalBytes.present
           ? data.totalBytes.value
           : this.totalBytes,
+      attempts: data.attempts.present ? data.attempts.value : this.attempts,
       errorMessage: data.errorMessage.present
           ? data.errorMessage.value
           : this.errorMessage,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -6089,9 +6201,12 @@ class DownloadJob extends DataClass implements Insertable<DownloadJob> {
     return (StringBuffer('DownloadJob(')
           ..write('songId: $songId, ')
           ..write('status: $status, ')
+          ..write('quality: $quality, ')
           ..write('bytesDownloaded: $bytesDownloaded, ')
           ..write('totalBytes: $totalBytes, ')
+          ..write('attempts: $attempts, ')
           ..write('errorMessage: $errorMessage, ')
+          ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -6101,9 +6216,12 @@ class DownloadJob extends DataClass implements Insertable<DownloadJob> {
   int get hashCode => Object.hash(
     songId,
     status,
+    quality,
     bytesDownloaded,
     totalBytes,
+    attempts,
     errorMessage,
+    createdAt,
     updatedAt,
   );
   @override
@@ -6112,35 +6230,47 @@ class DownloadJob extends DataClass implements Insertable<DownloadJob> {
       (other is DownloadJob &&
           other.songId == this.songId &&
           other.status == this.status &&
+          other.quality == this.quality &&
           other.bytesDownloaded == this.bytesDownloaded &&
           other.totalBytes == this.totalBytes &&
+          other.attempts == this.attempts &&
           other.errorMessage == this.errorMessage &&
+          other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
 
 class DownloadJobsCompanion extends UpdateCompanion<DownloadJob> {
   final Value<String> songId;
   final Value<int> status;
+  final Value<int?> quality;
   final Value<int> bytesDownloaded;
   final Value<int?> totalBytes;
+  final Value<int> attempts;
   final Value<String?> errorMessage;
+  final Value<DateTime?> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const DownloadJobsCompanion({
     this.songId = const Value.absent(),
     this.status = const Value.absent(),
+    this.quality = const Value.absent(),
     this.bytesDownloaded = const Value.absent(),
     this.totalBytes = const Value.absent(),
+    this.attempts = const Value.absent(),
     this.errorMessage = const Value.absent(),
+    this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DownloadJobsCompanion.insert({
     required String songId,
     required int status,
+    this.quality = const Value.absent(),
     this.bytesDownloaded = const Value.absent(),
     this.totalBytes = const Value.absent(),
+    this.attempts = const Value.absent(),
     this.errorMessage = const Value.absent(),
+    this.createdAt = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
   }) : songId = Value(songId),
@@ -6149,18 +6279,24 @@ class DownloadJobsCompanion extends UpdateCompanion<DownloadJob> {
   static Insertable<DownloadJob> custom({
     Expression<String>? songId,
     Expression<int>? status,
+    Expression<int>? quality,
     Expression<int>? bytesDownloaded,
     Expression<int>? totalBytes,
+    Expression<int>? attempts,
     Expression<String>? errorMessage,
+    Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (songId != null) 'song_id': songId,
       if (status != null) 'status': status,
+      if (quality != null) 'quality': quality,
       if (bytesDownloaded != null) 'bytes_downloaded': bytesDownloaded,
       if (totalBytes != null) 'total_bytes': totalBytes,
+      if (attempts != null) 'attempts': attempts,
       if (errorMessage != null) 'error_message': errorMessage,
+      if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -6169,18 +6305,24 @@ class DownloadJobsCompanion extends UpdateCompanion<DownloadJob> {
   DownloadJobsCompanion copyWith({
     Value<String>? songId,
     Value<int>? status,
+    Value<int?>? quality,
     Value<int>? bytesDownloaded,
     Value<int?>? totalBytes,
+    Value<int>? attempts,
     Value<String?>? errorMessage,
+    Value<DateTime?>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
   }) {
     return DownloadJobsCompanion(
       songId: songId ?? this.songId,
       status: status ?? this.status,
+      quality: quality ?? this.quality,
       bytesDownloaded: bytesDownloaded ?? this.bytesDownloaded,
       totalBytes: totalBytes ?? this.totalBytes,
+      attempts: attempts ?? this.attempts,
       errorMessage: errorMessage ?? this.errorMessage,
+      createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -6195,14 +6337,23 @@ class DownloadJobsCompanion extends UpdateCompanion<DownloadJob> {
     if (status.present) {
       map['status'] = Variable<int>(status.value);
     }
+    if (quality.present) {
+      map['quality'] = Variable<int>(quality.value);
+    }
     if (bytesDownloaded.present) {
       map['bytes_downloaded'] = Variable<int>(bytesDownloaded.value);
     }
     if (totalBytes.present) {
       map['total_bytes'] = Variable<int>(totalBytes.value);
     }
+    if (attempts.present) {
+      map['attempts'] = Variable<int>(attempts.value);
+    }
     if (errorMessage.present) {
       map['error_message'] = Variable<String>(errorMessage.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
     }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
@@ -6218,9 +6369,12 @@ class DownloadJobsCompanion extends UpdateCompanion<DownloadJob> {
     return (StringBuffer('DownloadJobsCompanion(')
           ..write('songId: $songId, ')
           ..write('status: $status, ')
+          ..write('quality: $quality, ')
           ..write('bytesDownloaded: $bytesDownloaded, ')
           ..write('totalBytes: $totalBytes, ')
+          ..write('attempts: $attempts, ')
           ..write('errorMessage: $errorMessage, ')
+          ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))

@@ -1,0 +1,81 @@
+# Vulnerability scan (R1-L5): checks pubspec.lock and the Flutter/Dart SDK
+# against known vulnerabilities, plus the project ban list.
+#
+# Runs on every push/PR to main (fast: no build, only `flutter pub get`)
+# and weekly on Mondays, so a newly disclosed advisory is caught even
+# without new commits.
+#
+# Tool: dartvulncheck 0.4.0 (pub.dev, published 2026-11-07) — "Checks
+# pubspec.lock and the Flutter/Dart SDK you build with against known
+# vulnerabilities, and fails CI when it finds one." Exit 0 = clean,
+# 3 = vulnerabilities found, 1 = cannot check. It queries repository
+# advisories with GITHUB_TOKEN when available (the default Actions token
+# is enough); without a token that step is skipped automatically.
+# Chosen over `flutter pub audit` because dartvulncheck also covers the
+# SDK itself and fails the build on findings.
+name: Vulnerability scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 2 * * 1" # Mondays 02:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  vulncheck:
+    name: Scan dependencies for known vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Flutter 3.47.8
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: 3.47.8
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check for known vulnerabilities
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dart pub global activate dartvulncheck 0.4.0
+          "$HOME/.pub-cache/bin/dartvulncheck"
+
+      # Ban list (rencana keamanan §5.2 + R1-H1): packages/groups that
+      # must never (re-)enter the dependency tree. The list lives in
+      # .github/banned-dependencies.txt so it can be read by machines
+      # and humans alike; docs/dependencies.md documents the reasons.
+      - name: Check banned dependencies
+        run: |
+          FAILED=0
+          while IFS= read -r line; do
+            case "$line" in
+              ''|'#'*) continue ;;
+            esac
+            kind="${line%%:*}"
+            name="${line#*:}"
+            if [ "$kind" = "pub" ]; then
+              if grep -q "^  $name:" pubspec.lock; then
+                echo "::error::Banned pub dependency present in pubspec.lock: $name"
+                FAILED=1
+              fi
+            elif [ "$kind" = "gradle" ]; then
+              if grep -rq -- "$name" android --include='*.kts' --include='*.gradle' --include='*.toml' 2>/dev/null; then
+                echo "::error::Banned Gradle dependency present in android/: $name"
+                FAILED=1
+              fi
+            else
+              echo "::error::Unknown ban-list kind in .github/banned-dependencies.txt: $line"
+              FAILED=1
+            fi
+          done < .github/banned-dependencies.txt
+          exit $FAILED

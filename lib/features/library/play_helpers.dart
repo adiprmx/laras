@@ -35,14 +35,19 @@ Future<void> playTracks(
 /// Antrean pemutar dibatasi 200 lagu: bila daftar yang dimuat lebih dari
 /// itu, antrean diambil 200 lagu mulai dari lagu yang diketuk (pengguna
 /// memutar "dari sini ke depan", bukan seluruh library sekaligus).
+/// [downloadsDir] (bila diberikan) membuat lagu terunduh diputar dari
+/// file lokal tanpa jaringan (P5).
 Future<void> playSongViews(
   AudioPlayerPort port,
   PlayerSnapshot snap,
   List<SongView> items,
-  int index,
-) async {
+  int index, {
+  String? downloadsDir,
+}) async {
   if (items.isEmpty || index < 0 || index >= items.length) return;
-  final List<Track> all = items.map((SongView v) => v.toTrack()).toList();
+  final List<Track> all = items
+      .map((SongView v) => v.toTrack(downloadsDir: downloadsDir))
+      .toList();
   if (all.length <= kMaxQueueLength) {
     await playTracks(port, snap, all, index);
     return;

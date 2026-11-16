@@ -169,6 +169,109 @@ void main() {
     });
   });
 
+  group('RemotePlayerConfig.tryParse batas ukuran (R1-L1)', () {
+    Map<String, dynamic> clientJson({String? userAgent, String? name}) {
+      return <String, dynamic>{
+        'name': name ?? 'WEB_REMIX',
+        'version': '1.0',
+        'userAgent': userAgent ?? 'x',
+        'clientId': '67',
+      };
+    }
+
+    test('11 client -> seluruh config ditolak', () {
+      expect(
+        RemotePlayerConfig.tryParse(
+          <String, dynamic>{
+            'clients': <dynamic>[
+              for (int i = 0; i < 11; i++) clientJson(name: 'C$i'),
+            ],
+          },
+          fetchedAt: DateTime.now(),
+        ),
+        isNull,
+      );
+    });
+
+    test('10 client (tepat di batas) diterima', () {
+      final RemotePlayerConfig? config = RemotePlayerConfig.tryParse(
+        <String, dynamic>{
+          'clients': <dynamic>[
+            for (int i = 0; i < 10; i++) clientJson(name: 'C$i'),
+          ],
+        },
+        fetchedAt: DateTime.now(),
+      );
+      expect(config, isNotNull);
+      expect(config!.clients.length, 10);
+    });
+
+    test('string client 201 karakter -> ditolak; 200 diterima', () {
+      expect(
+        RemotePlayerConfig.tryParse(
+          <String, dynamic>{
+            'clients': <dynamic>[
+              clientJson(userAgent: 'a' * 201),
+            ],
+          },
+          fetchedAt: DateTime.now(),
+        ),
+        isNull,
+      );
+      final RemotePlayerConfig? ok = RemotePlayerConfig.tryParse(
+        <String, dynamic>{
+          'clients': <dynamic>[
+            clientJson(userAgent: 'a' * 200),
+          ],
+        },
+        fetchedAt: DateTime.now(),
+      );
+      expect(ok, isNotNull);
+    });
+
+    test('101 hash player -> ditolak; 100 diterima', () {
+      expect(
+        RemotePlayerConfig.tryParse(
+          <String, dynamic>{
+            'clients': <dynamic>[clientJson()],
+            'playerHashes': <String, dynamic>{
+              for (int i = 0; i < 101; i++) 'hash$i': 1,
+            },
+          },
+          fetchedAt: DateTime.now(),
+        ),
+        isNull,
+      );
+      final RemotePlayerConfig? ok = RemotePlayerConfig.tryParse(
+        <String, dynamic>{
+          'clients': <dynamic>[clientJson()],
+          'playerHashes': <String, dynamic>{
+            for (int i = 0; i < 100; i++) 'hash$i': 1,
+          },
+        },
+        fetchedAt: DateTime.now(),
+      );
+      expect(ok, isNotNull);
+      expect(ok!.playerHashes.length, 100);
+    });
+
+    test('60 ID kanari -> dipotong ke 50 (bukan ditolak)', () {
+      final RemotePlayerConfig? config = RemotePlayerConfig.tryParse(
+        <String, dynamic>{
+          'clients': <dynamic>[clientJson()],
+          'canaryVideoIds': <dynamic>[
+            for (int i = 0; i < 60; i++) 'vid${i.toString().padLeft(8, '0')}',
+          ],
+        },
+        fetchedAt: DateTime.now(),
+      );
+      expect(config, isNotNull);
+      expect(config!.canaryVideoIds.length, 50);
+      expect(config.canaryVideoIds.first, 'vid00000000');
+      expect(config.canaryVideoIds.last, 'vid00000049');
+    });
+  });
+
   group('RemoteConfigLoader', () {
     test('fetch sukses -> config remote + tersimpan di cache', () async {
       final FakeAdapter adapter = FakeAdapter(body: kValidConfigJson);
@@ -269,6 +372,36 @@ void main() {
         loader.refresh(force: true),
       ]);
       expect(adapter.fetchCount, 1);
+    });
+
+    test('JSON List dari server -> fallback defaults, bukan TypeError',
+        () async {
+      // R1-L1: `jsonDecode(...) as Map` lama melempar TypeError yang
+      // tidak ditangkap _fetchAndStore -> unhandled async error lewat
+      // unawaited(_refresh(...)).
+      final RemoteConfigLoader loader = RemoteConfigLoader(
+        dio: dioWith(FakeAdapter(body: '[1, 2, 3]')),
+        prefs: prefs,
+      );
+      final RemotePlayerConfig config = await loader.refresh(force: true);
+      expect(config.isRemote, isFalse);
+    });
+
+    test('config valid tapi > 4 MB -> ditolak cap, fallback defaults',
+        () async {
+      // Diskriminan: tanpa cap streaming, config ini VALID (padding
+      // diabaikan tryParse) dan isRemote akan true. Cap yang bekerja
+      // menolaknya sebelum parse -> fallback bawaan.
+      final Map<String, dynamic> big =
+          jsonDecode(kValidConfigJson) as Map<String, dynamic>;
+      big['padding'] = 'x' * (ResponseLimits.remoteConfigBytes + 1);
+      final RemoteConfigLoader loader = RemoteConfigLoader(
+        dio: dioWith(FakeAdapter(body: jsonEncode(big))),
+        prefs: prefs,
+      );
+      final RemotePlayerConfig config = await loader.refresh(force: true);
+      expect(config.isRemote, isFalse);
+      expect(config.clients.first.name, 'WEB_REMIX');
     });
   });
 }

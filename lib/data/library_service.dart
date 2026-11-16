@@ -150,6 +150,54 @@ class LibraryCounts {
       historyEntries == 0;
 }
 
+/// Satu file unduhan (ringan, untuk rekonsiliasi P5): tanpa nama artis
+/// atau metadata lain, supaya pemindaian 10.000 lagu tidak memuat
+/// seluruh SongView ke memori.
+class DownloadedFileInfo {
+  const DownloadedFileInfo({
+    required this.songId,
+    required this.filePath,
+    required this.fileSizeBytes,
+  });
+
+  final String songId;
+
+  /// Path relatif terhadap direktori unduhan (atau null bila rusak).
+  final String? filePath;
+
+  /// Ukuran yang tercatat saat unduhan selesai (atau null bila rusak).
+  final int? fileSizeBytes;
+}
+
+/// Hitungan penyimpanan dari database (bukan pemindaian filesystem,
+/// PRD B3.3): unduhan dan ruang lagu yang pernah diputar.
+class StorageStats {
+  const StorageStats({
+    required this.downloadCount,
+    required this.downloadBytes,
+    required this.playedSongsCount,
+    required this.playedSongsBytes,
+  });
+
+  const StorageStats.empty()
+    : downloadCount = 0,
+      downloadBytes = 0,
+      playedSongsCount = 0,
+      playedSongsBytes = 0;
+
+  /// Jumlah lagu terunduh.
+  final int downloadCount;
+
+  /// Total byte file unduhan.
+  final int downloadBytes;
+
+  /// Jumlah entri cache streaming.
+  final int playedSongsCount;
+
+  /// Total byte cache streaming.
+  final int playedSongsBytes;
+}
+
 /// Hasil pencarian lokal: lagu dan artis yang cocok, masing-masing
 /// terurut relevansi bm25 (paling relevan dulu).
 class LocalSearchResults {
@@ -1695,5 +1743,363 @@ class LibraryService {
   /// Kosongkan antrean tersimpan.
   Future<void> clearQueue() async {
     await db.delete(db.queueItems).go();
+  }
+
+  // ------------------------------------------------------------------
+  // Unduhan (P5)
+  // ------------------------------------------------------------------
+
+  /// Stream status unduhan satu lagu (`DownloadState`), untuk tombol
+  /// unduh yang reaktif. Lagu yang belum dikenal bernilai 0.
+  Stream<int> watchDownloadState(String songId) {
+    final SimpleSelectStatement<Songs, Song> query = db.select(db.songs)
+      ..where((Songs s) => s.id.equals(songId));
+    return query.watchSingleOrNull().map(
+      (Song? song) => song?.downloadState ?? DownloadState.notDownloaded,
+    );
+  }
+
+  /// Lagu terunduh, urut file terbesar dulu (PRD B3.3).
+  Future<List<SongView>> downloadedSongs({int limit = 10}) async {
+    final SimpleSelectStatement<Songs, Song> query = db.select(db.songs)
+      ..where((Songs s) => s.downloadState.equals(DownloadState.downloaded))
+      ..orderBy(<OrderingTerm Function(Songs)>[
+        (Songs s) =>
+            OrderingTerm(expression: s.fileSizeBytes, mode: OrderingMode.desc),
+        (Songs s) => OrderingTerm(expression: s.id),
+      ])
+      ..limit(limit);
+    return _attachArtists(await query.get());
+  }
+
+  /// Halaman lagu terunduh, urut file terbesar dulu (keyset pada
+  /// (fileSizeBytes DESC, id ASC)).
+  Future<List<SongView>> downloadedSongsPage({
+    SongView? after,
+    int limit = kPageSize,
+  }) async {
+    final SimpleSelectStatement<Songs, Song> query = db.select(db.songs);
+    if (after == null) {
+      query.where(
+        (Songs s) => s.downloadState.equals(DownloadState.downloaded),
+      );
+    } else {
+      final int afterSize = after.song.fileSizeBytes ?? 0;
+      query.where(
+        (Songs s) =>
+            s.downloadState.equals(DownloadState.downloaded) &
+            (s.fileSizeBytes.isSmallerThanValue(afterSize) |
+                (s.fileSizeBytes.equals(afterSize) &
+                    s.id.isBiggerThanValue(after.song.id))),
+      );
+    }
+    query
+      ..orderBy(<OrderingTerm Function(Songs)>[
+        (Songs s) =>
+            OrderingTerm(expression: s.fileSizeBytes, mode: OrderingMode.desc),
+        (Songs s) => OrderingTerm(expression: s.id),
+      ])
+      ..limit(limit);
+    return _attachArtists(await query.get());
+  }
+
+  /// Daftar ringan semua file unduhan (untuk rekonsiliasi saat start).
+  Future<List<DownloadedFileInfo>> downloadedFiles() async {
+    final List<QueryRow> rows = await db
+        .customSelect(
+          'SELECT id, file_path, file_size_bytes FROM songs '
+          'WHERE download_state = ?',
+          variables: <Variable<Object>>[
+            Variable<int>(DownloadState.downloaded),
+          ],
+          readsFrom: <TableInfo<Table, Object?>>{db.songs},
+        )
+        .get();
+    return rows
+        .map(
+          (QueryRow r) => DownloadedFileInfo(
+            songId: r.read<String>('id'),
+            filePath: r.readNullable<String>('file_path'),
+            fileSizeBytes: r.readNullable<int>('file_size_bytes'),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  /// Tandai lagu sebagai terunduh (file sudah di-rename dan ukurannya
+  /// cocok). Lagu ikut masuk Library.
+  Future<void> markDownloaded({
+    required String songId,
+    required String filePath,
+    required int fileSizeBytes,
+    String? formatId,
+  }) async {
+    await (db.update(db.songs)..where((Songs s) => s.id.equals(songId))).write(
+      SongsCompanion(
+        downloadState: const Value<int>(DownloadState.downloaded),
+        filePath: Value<String?>(filePath),
+        fileSizeBytes: Value<int?>(fileSizeBytes),
+        downloadedAt: Value<DateTime?>(DateTime.now()),
+        formatId: Value<String?>(formatId),
+        inLibrary: const Value<bool>(true),
+        dateModified: Value<DateTime>(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Kosongkan status unduhan lagu (file hilang/rusak/dihapus pengguna).
+  /// Lagu tetap di Library.
+  Future<void> clearDownloadState(String songId) async {
+    await (db.update(db.songs)..where((Songs s) => s.id.equals(songId))).write(
+      SongsCompanion(
+        downloadState: const Value<int>(DownloadState.notDownloaded),
+        filePath: const Value<String?>(null),
+        fileSizeBytes: const Value<int?>(null),
+        downloadedAt: const Value<DateTime?>(null),
+        formatId: const Value<String?>(null),
+        dateModified: Value<DateTime>(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Ubah status unduhan lagu saja (mis. menjadi "mengunduh" saat job
+  /// dibuat). Metadata file tidak disentuh.
+  Future<void> setDownloadState(String songId, int state) async {
+    await (db.update(db.songs)..where((Songs s) => s.id.equals(songId))).write(
+      SongsCompanion(
+        downloadState: Value<int>(state),
+        dateModified: Value<DateTime>(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Simpan metadata format audio (itag, mime, bitrate) bila belum ada.
+  Future<void> upsertFormat(FormatsCompanion format) async {
+    await db
+        .into(db.formats)
+        .insert(format, mode: InsertMode.insertOrIgnore);
+  }
+
+  /// Semua pekerjaan unduhan, urut dibuat dulu (null = paling tua).
+  Future<List<DownloadJob>> downloadJobs() async {
+    return (db.select(db.downloadJobs)
+          ..orderBy(<OrderingTerm Function(DownloadJobs)>[
+            (DownloadJobs j) => OrderingTerm(expression: j.createdAt),
+            (DownloadJobs j) => OrderingTerm(expression: j.songId),
+          ]))
+        .get();
+  }
+
+  /// Stream semua pekerjaan unduhan (untuk tab Unduhan).
+  Stream<List<DownloadJob>> watchDownloadJobs() {
+    final SimpleSelectStatement<DownloadJobs, DownloadJob> query =
+        db.select(db.downloadJobs)
+          ..orderBy(<OrderingTerm Function(DownloadJobs)>[
+            (DownloadJobs j) => OrderingTerm(expression: j.createdAt),
+            (DownloadJobs j) => OrderingTerm(expression: j.songId),
+          ]);
+    return query.watch();
+  }
+
+  /// Satu pekerjaan unduhan, atau null bila tidak ada.
+  Future<DownloadJob?> downloadJobBySongId(String songId) async {
+    return (db.select(
+      db.downloadJobs,
+    )..where((DownloadJobs j) => j.songId.equals(songId))).getSingleOrNull();
+  }
+
+  /// Sisip atau ganti satu pekerjaan unduhan.
+  Future<void> upsertDownloadJob(DownloadJobsCompanion job) async {
+    await db
+        .into(db.downloadJobs)
+        .insert(job, mode: InsertMode.insertOrReplace);
+  }
+
+  /// Perbarui kolom-kolom pekerjaan unduhan.
+  Future<void> updateDownloadJob(
+    String songId,
+    DownloadJobsCompanion patch,
+  ) async {
+    await (db.update(
+      db.downloadJobs,
+    )..where((DownloadJobs j) => j.songId.equals(songId))).write(patch);
+  }
+
+  /// Hapus pekerjaan unduhan.
+  Future<void> deleteDownloadJob(String songId) async {
+    await (db.delete(
+      db.downloadJobs,
+    )..where((DownloadJobs j) => j.songId.equals(songId))).go();
+  }
+
+  /// Pekerjaan yang tertinggal berstatus "mengunduh" (app mati di tengah
+  /// unduhan) kembali ke antrean. Dipanggil rekonsiliasi saat start.
+  /// Mengembalikan jumlah job yang direset.
+  Future<int> resetRunningJobsToQueued() async {
+    final List<DownloadJob> running =
+        await (db.select(db.downloadJobs)..where(
+              (DownloadJobs j) => j.status.equals(DownloadJobStatus.running),
+            ))
+            .get();
+    if (running.isEmpty) return 0;
+    await db.transaction(() async {
+      for (final DownloadJob job in running) {
+        await (db.update(db.downloadJobs)..where(
+              (DownloadJobs j) => j.songId.equals(job.songId),
+            ))
+            .write(
+              DownloadJobsCompanion(
+                status: const Value<int>(DownloadJobStatus.queued),
+                updatedAt: Value<DateTime>(DateTime.now()),
+              ),
+            );
+      }
+    });
+    return running.length;
+  }
+
+  /// Hapus pekerjaan selesai yang lebih tua dari [olderThan]
+  /// (PRD B3.2: 7 hari). Mengembalikan jumlah yang dihapus.
+  Future<int> pruneCompletedJobs({
+    Duration olderThan = const Duration(days: 7),
+  }) async {
+    final DateTime cutoff = DateTime.now().subtract(olderThan);
+    final List<DownloadJob> stale =
+        await (db.select(db.downloadJobs)..where(
+              (DownloadJobs j) =>
+                  j.status.equals(DownloadJobStatus.completed) &
+                  j.updatedAt.isSmallerThanValue(cutoff),
+            ))
+            .get();
+    if (stale.isEmpty) return 0;
+    await db.transaction(() async {
+      for (final DownloadJob job in stale) {
+        await (db.delete(
+          db.downloadJobs,
+        )..where((DownloadJobs j) => j.songId.equals(job.songId))).go();
+      }
+    });
+    return stale.length;
+  }
+
+  // ------------------------------------------------------------------
+  // Cache streaming (P5): manifest di tabel cache_entries
+  // ------------------------------------------------------------------
+
+  /// Satu entri cache, atau null bila tidak ada.
+  Future<CacheEntry?> cacheEntry(String key) async {
+    return (db.select(
+      db.cacheEntries,
+    )..where((CacheEntries e) => e.key.equals(key))).getSingleOrNull();
+  }
+
+  /// Entri cache untuk satu lagu (semua itag yang pernah di-cache).
+  /// videoId di-escape supaya `_` di dalamnya dibaca harfiah di LIKE.
+  Future<List<CacheEntry>> cacheEntriesForVideo(String videoId) async {
+    final String escaped = videoId
+        .replaceAll(r'\', r'\\')
+        .replaceAll('%', r'\%')
+        .replaceAll('_', r'\_');
+    final List<QueryRow> rows = await db
+        .customSelect(
+          'SELECT "key", file_path, size_bytes, last_accessed, created_at '
+          "FROM cache_entries WHERE \"key\" LIKE ? ESCAPE '\\' ",
+          variables: <Variable<Object>>[Variable<String>('${escaped}_%')],
+          readsFrom: <TableInfo<Table, Object?>>{db.cacheEntries},
+        )
+        .get();
+    return rows
+        .map(
+          (QueryRow r) => CacheEntry(
+            key: r.read<String>('key'),
+            filePath: r.read<String>('file_path'),
+            sizeBytes: r.read<int>('size_bytes'),
+            lastAccessed: r.read<DateTime>('last_accessed'),
+            createdAt: r.read<DateTime>('created_at'),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  /// Sisip atau ganti satu entri cache.
+  Future<void> upsertCacheEntry(CacheEntriesCompanion entry) async {
+    await db
+        .into(db.cacheEntries)
+        .insert(entry, mode: InsertMode.insertOrReplace);
+  }
+
+  /// Perbarui waktu akses terakhir entri cache (dipakai LRU).
+  Future<void> touchCacheEntry(String key, DateTime now) async {
+    await (db.update(
+      db.cacheEntries,
+    )..where((CacheEntries e) => e.key.equals(key))).write(
+      CacheEntriesCompanion(lastAccessed: Value<DateTime>(now)),
+    );
+  }
+
+  /// Hapus satu entri cache.
+  Future<void> deleteCacheEntry(String key) async {
+    await (db.delete(
+      db.cacheEntries,
+    )..where((CacheEntries e) => e.key.equals(key))).go();
+  }
+
+  /// Hapus beberapa entri cache sekaligus.
+  Future<void> deleteCacheEntries(List<String> keys) async {
+    if (keys.isEmpty) return;
+    await (db.delete(
+      db.cacheEntries,
+    )..where((CacheEntries e) => e.key.isIn(keys))).go();
+  }
+
+  /// Entri cache urut akses terakhir (paling lama dulu) — urutan eviction
+  /// LRU. [limit] 0 berarti semua.
+  Future<List<CacheEntry>> cacheEntriesByLru({int limit = 0}) async {
+    final SimpleSelectStatement<CacheEntries, CacheEntry> query =
+        db.select(db.cacheEntries)
+          ..orderBy(<OrderingTerm Function(CacheEntries)>[
+            (CacheEntries e) => OrderingTerm(expression: e.lastAccessed),
+            (CacheEntries e) => OrderingTerm(expression: e.key),
+          ]);
+    if (limit > 0) query.limit(limit);
+    return query.get();
+  }
+
+  /// Semua entri cache (untuk rekonsiliasi).
+  Future<List<CacheEntry>> allCacheEntries() async {
+    return db.select(db.cacheEntries).get();
+  }
+
+  /// Hitungan penyimpanan dari database (PRD B3.3).
+  Future<StorageStats> storageStats() async {
+    final int downloadCount = await _count(
+      'SELECT COUNT(*) AS c FROM songs WHERE download_state = '
+      '${DownloadState.downloaded}',
+    );
+    final QueryRow downloadRow = await db
+        .customSelect(
+          'SELECT COALESCE(SUM(file_size_bytes), 0) AS s FROM songs '
+          'WHERE download_state = ?',
+          variables: <Variable<Object>>[
+            Variable<int>(DownloadState.downloaded),
+          ],
+          readsFrom: <TableInfo<Table, Object?>>{db.songs},
+        )
+        .getSingle();
+    final int playedSongsCount = await _count(
+      'SELECT COUNT(*) AS c FROM cache_entries',
+    );
+    final QueryRow cacheRow = await db
+        .customSelect(
+          'SELECT COALESCE(SUM(size_bytes), 0) AS s FROM cache_entries',
+          readsFrom: <TableInfo<Table, Object?>>{db.cacheEntries},
+        )
+        .getSingle();
+    return StorageStats(
+      downloadCount: downloadCount,
+      downloadBytes: downloadRow.read<int>('s'),
+      playedSongsCount: playedSongsCount,
+      playedSongsBytes: cacheRow.read<int>('s'),
+    );
   }
 }

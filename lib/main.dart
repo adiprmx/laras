@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:laras/core/theme/app_theme.dart';
 import 'package:laras/data/database.dart';
+import 'package:laras/downloads/downloads.dart';
+import 'package:laras/extractor/extractor.dart';
 import 'package:laras/features/downloads/downloads_screen.dart';
 import 'package:laras/features/home/home_screen.dart';
 import 'package:laras/features/library/library_screen.dart';
@@ -24,6 +28,8 @@ Future<void> main() async {
   LibraryService? libraryService;
   bool libraryFailed = false;
   SearchService? searchService;
+  DownloadService? downloadService;
+  StreamCacheService? streamCache;
   try {
     final LarasDatabase db = await openLarasDatabase();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -43,6 +49,49 @@ Future<void> main() async {
       library: libraryService,
     );
     recorder.start();
+    // P5: layanan unduhan + cache streaming. Hanya bila database
+    // berhasil dibuka; bila gagal, app tetap jalan tanpa unduhan
+    // (tombol unduh disembunyikan, tab Unduhan menampilkan pesan).
+    final DownloadPaths paths = await DownloadPaths.create();
+    final InnertubeClient downloadInnertube = InnertubeClient();
+    final ExtractorDownloadUrlSource urlSource =
+        ExtractorDownloadUrlSource(
+          innertube: downloadInnertube,
+          solver: playerService.solver,
+          configLoader: RemoteConfigLoader(prefs: prefs),
+          scriptLoader: PlayerScriptLoader(client: downloadInnertube),
+        );
+    final StreamCacheService cache = StreamCacheService(
+      library: libraryService,
+      paths: paths,
+    );
+    final DownloadService downloads = DownloadService(
+      library: libraryService,
+      paths: paths,
+      urlSource: urlSource,
+      streamCache: cache,
+    );
+    streamCache = cache;
+    downloadService = downloads;
+    // Kabel cache ke player: lagu yang diputar dari file cache
+    // dicatat; bila engine gagal pada lagu dari cache, entrinya
+    // dihapus supaya pemutaran ulang mengambil stream segar.
+    final AudioPlayerPort port = playerService.port;
+    if (port is JustAudioPlayerPort) {
+      port.playbackCache = cache;
+    }
+    // Cache tidak berebut bandwidth dengan unduhan yang diminta
+    // pengguna, dan tidak pernah menghapus lagu yang sedang diputar.
+    cache.isBusy = () => downloads.hasActiveJob;
+    cache.protectedVideoId =
+        () => playerService.port.snapshot.currentTrack?.videoId;
+    downloads.onQueueIdle = cache.pumpPending;
+    // Rekonsiliasi di latar (tidak memblokir startup): sinkronkan
+    // tabel job dengan file yang benar-benar ada, lalu jalankan
+    // antrean (job yang tertinggal dari sesi sebelumnya dilanjutkan).
+    unawaited(
+      _reconcileAndStart(downloads, cache, libraryService, paths),
+    );
   } catch (error, stackTrace) {
     debugPrint('Laras: database gagal dibuka: $error\n$stackTrace');
     libraryFailed = true;
@@ -56,8 +105,32 @@ Future<void> main() async {
       libraryService: libraryService,
       libraryFailed: libraryFailed,
       searchService: searchService,
+      downloadService: downloadService,
+      streamCache: streamCache,
     ),
   );
+}
+
+/// Rekonsiliasi saat start, lalu jalankan antrean unduhan.
+///
+/// Rekonsiliasi gagal (mis. direktori tidak bisa dibaca) tidak boleh
+/// mematikan unduhan: antrean tetap dijalankan.
+Future<void> _reconcileAndStart(
+  DownloadService downloads,
+  StreamCacheService cache,
+  LibraryService library,
+  DownloadPaths paths,
+) async {
+  try {
+    downloads.lastReconcile = await reconcileDownloads(
+      library: library,
+      paths: paths,
+      cache: cache,
+    );
+  } catch (error, stackTrace) {
+    debugPrint('Laras: rekonsiliasi unduhan gagal: $error\n$stackTrace');
+  }
+  downloads.start();
 }
 
 /// Laras: pemutar musik Android gratis, tanpa iklan, bisa offline.
@@ -75,12 +148,19 @@ class LarasApp extends StatelessWidget {
     this.libraryService,
     this.libraryFailed = false,
     this.searchService,
+    this.downloadService,
+    this.streamCache,
   });
 
   final PlayerService? playerService;
   final LibraryService? libraryService;
   final bool libraryFailed;
   final SearchService? searchService;
+
+  /// Layanan unduhan + cache (P5), null bila database gagal dibuka
+  /// atau bila app dipompa di widget test tanpa layanan unduhan.
+  final DownloadService? downloadService;
+  final StreamCacheService? streamCache;
 
   @override
   Widget build(BuildContext context) {
@@ -106,6 +186,11 @@ class LarasApp extends StatelessWidget {
       child: app,
     );
     app = SearchScope(service: searchService, child: app);
+    app = DownloadsScope(
+      downloads: downloadService,
+      cache: streamCache,
+      child: app,
+    );
     if (service == null) return app;
     return PlayerScope(service: service, child: app);
   }

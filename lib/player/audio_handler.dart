@@ -32,6 +32,17 @@ class LarasAudioHandler extends BaseAudioHandler {
   StreamSubscription<PlayerSnapshot>? _stateSub;
   StreamSubscription<Duration>? _positionSub;
 
+  /// Pola videoId YouTube: tepat 11 karakter alfabet base64 URL-safe.
+  ///
+  /// Handler ini adalah perbatasan MediaSession: aplikasi lain bisa
+  /// mengirim perintah (root MediaBrowser terbuka untuk semua pemanggil —
+  /// perilaku paket audio_service, R1-L4) sehingga `mediaItem.id` tidak
+  /// bisa dipercaya begitu saja. Id yang tidak valid DIABAIKAN
+  /// (fail-closed): tidak masuk antrean, tidak memicu resolve.
+  static final RegExp _videoIdPattern = RegExp(r'^[A-Za-z0-9_-]{11}$');
+
+  static bool _isValidVideoId(String id) => _videoIdPattern.hasMatch(id);
+
   MediaItem _toMediaItem(Track track, Duration? duration) {
     return MediaItem(
       id: track.videoId,
@@ -126,7 +137,9 @@ class LarasAudioHandler extends BaseAudioHandler {
   Future<void> stop() => _player.stop();
 
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position) => _player.seek(
+    position.isNegative ? Duration.zero : position,
+  );
 
   @override
   Future<void> seekBackward(bool begin) async {
@@ -151,6 +164,7 @@ class LarasAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> playMediaItem(MediaItem mediaItem) async {
+    if (!_isValidVideoId(mediaItem.id)) return;
     final List<Track> queue = _player.snapshot.queue;
     final int existing = queue.indexWhere((t) => t.videoId == mediaItem.id);
     if (existing >= 0) {
@@ -175,6 +189,7 @@ class LarasAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> addQueueItem(MediaItem mediaItem) async {
+    if (!_isValidVideoId(mediaItem.id)) return;
     await _player.addToQueue(
       Track(
         videoId: mediaItem.id,
@@ -196,6 +211,7 @@ class LarasAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> insertQueueItem(int index, MediaItem mediaItem) async {
+    if (!_isValidVideoId(mediaItem.id)) return;
     await _player.insertInQueue(
       index,
       Track(
@@ -220,7 +236,13 @@ class LarasAudioHandler extends BaseAudioHandler {
   Future<void> updateQueue(List<MediaItem> queue) async {
     final String? currentId = _player.snapshot.currentTrack?.videoId;
     final bool wasPlaying = _player.snapshot.playing;
-    final List<Track> tracks = queue
+    final List<MediaItem> valid =
+        queue.where((m) => _isValidVideoId(m.id)).toList(growable: false);
+    // Semua id tidak valid: jangan hapus antrean pengguna karena perintah
+    // eksternal yang rusak. Daftar kosong yang sah (hapus antrean) tetap
+    // diteruskan.
+    if (queue.isNotEmpty && valid.isEmpty) return;
+    final List<Track> tracks = valid
         .map(
           (MediaItem m) => Track(
             videoId: m.id,
@@ -261,7 +283,8 @@ class LarasAudioHandler extends BaseAudioHandler {
   }
 
   @override
-  Future<void> setSpeed(double speed) => _player.setSpeed(speed);
+  Future<void> setSpeed(double speed) =>
+      _player.setSpeed(speed.clamp(0.5, 2.0));
 
   /// Bebaskan langganan. Dipanggil saat service dihentikan.
   Future<void> dispose() async {

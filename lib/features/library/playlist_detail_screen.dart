@@ -11,6 +11,7 @@ import 'package:laras/core/theme/app_theme.dart';
 import 'package:laras/core/widgets/empty_state.dart';
 import 'package:laras/core/widgets/loading_rows.dart';
 import 'package:laras/data/database.dart';
+import 'package:laras/downloads/downloads.dart';
 import 'package:laras/features/library/play_helpers.dart';
 import 'package:laras/features/library/playlist_form_dialog.dart';
 import 'package:laras/features/library/song_row.dart';
@@ -349,7 +350,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final List<SongView> items = _entries
         .map((PlaylistSongEntry e) => e.song)
         .toList();
-    await playSongViews(port, snap, items, index);
+    await playSongViews(
+      port,
+      snap,
+      items,
+      index,
+      downloadsDir: DownloadsScope.downloadsDirOf(context),
+    );
   }
 }
 

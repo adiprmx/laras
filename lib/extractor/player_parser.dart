@@ -50,6 +50,10 @@ ParsedPlayerResponse parsePlayerResponse(Map<String, dynamic> json) {
         streamingData?['adaptiveFormats'] as List<dynamic>?;
     if (adaptive != null) {
       for (final dynamic raw in adaptive) {
+        // R1-M3: respons player yang sah membawa segelintir format audio;
+        // hentikan pengumpulan di cap supaya daftar tidak tumbuh tanpa
+        // batas dari respons yang dimanipulasi.
+        if (audioFormats.length >= kMaxParserItemsPerGroup) break;
         if (raw is! Map<String, dynamic>) continue;
         final String mimeType = raw['mimeType'] as String? ?? '';
         if (!mimeType.startsWith('audio/')) continue;
@@ -146,6 +150,8 @@ List<SearchSong> parseSearchResponse(Map<String, dynamic> json) {
   final Set<String> seen = <String>{};
   final List<Object?> stack = <Object?>[json];
   while (stack.isNotEmpty) {
+    // R1-M3: hentikan pengumpulan di cap (lihat kMaxParserItemsPerGroup).
+    if (out.length >= kMaxParserItemsPerGroup) break;
     final Object? node = stack.removeLast();
     if (node is List) {
       stack.addAll(node);

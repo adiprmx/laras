@@ -41,6 +41,9 @@ class FakeSolver implements SignatureSolver {
   int solveCalls = 0;
   ExtractorException? errorToThrow;
 
+  /// Bila diisi, solve() mengembalikan URL ini (untuk tes validasi URL).
+  String? urlToReturn;
+
   @override
   Future<String> solve({
     required PlayerScript script,
@@ -48,7 +51,8 @@ class FakeSolver implements SignatureSolver {
   }) async {
     solveCalls++;
     if (errorToThrow != null) throw errorToThrow!;
-    return 'https://rr1---sn-palsu.googlevideo.com/videoplayback?itag=${format.itag}';
+    return urlToReturn ??
+        'https://rr1---sn-palsu.googlevideo.com/videoplayback?itag=${format.itag}';
   }
 
   @override
@@ -97,13 +101,20 @@ class FakeScriptLoader extends PlayerScriptLoader {
   );
 
   @override
-  Future<PlayerScript> load({bool forceRefresh = false}) async {
+  Future<PlayerScript> load({
+    bool forceRefresh = false,
+    Set<String>? allowedHashes,
+  }) async {
     if (errorToThrow != null) throw errorToThrow!;
     return dummy;
   }
 }
 
-ParsedPlayerResponse okResponse({bool cipher = true, bool sabrOnly = false}) {
+ParsedPlayerResponse okResponse({
+  bool cipher = true,
+  bool sabrOnly = false,
+  String? directUrl,
+}) {
   return ParsedPlayerResponse(
     playability: Playability.ok,
     audioFormats: <AudioFormat>[
@@ -124,11 +135,13 @@ ParsedPlayerResponse okResponse({bool cipher = true, bool sabrOnly = false}) {
           cipherUrl: 'https://rr1---sn-palsu.googlevideo.com/videoplayback',
         )
       else
-        const AudioFormat(
+        AudioFormat(
           itag: 251,
           mimeType: 'audio/webm; codecs="opus"',
           bitrate: 154822,
-          url: 'https://rr1---sn-palsu.googlevideo.com/videoplayback?langsung=1',
+          url:
+              directUrl ??
+              'https://rr1---sn-palsu.googlevideo.com/videoplayback?langsung=1',
         ),
     ],
     title: 'Lagu Tes',
@@ -515,6 +528,87 @@ void main() {
       // Hanya VR yang dicoba (2x karena retry LOGIN_REQUIRED); client
       // web dilewati.
       expect(innertube.playerCalls, <String>['ANDROID_VR', 'ANDROID_VR']);
+    });
+  });
+
+  group('StreamResolver validasi URL stream (R1-M1)', () {
+    test('URL langsung host liar -> client dilewati, client berikut dicoba',
+        () async {
+      final FakeInnertube innertube = FakeInnertube(
+        responses: <String, Object>{
+          'WEB_REMIX': okResponse(
+            cipher: false,
+            directUrl: 'https://evil.example/lagu.mp3',
+          ),
+          'MWEB': okResponse(cipher: false),
+        },
+      );
+      final StreamResolver resolver = makeResolver(
+        innertube: innertube,
+        solver: FakeSolver(),
+        clients: const <ClientDefinition>[kWebRemixClient, kMwebClient],
+        prefs: prefs,
+      );
+      final ResolvedAudio result = await resolver.resolve('hhn-nGSuenM');
+      expect(result.clientName, 'MWEB');
+      expect(result.url, contains('googlevideo.com'));
+      expect(innertube.playerCalls, <String>['WEB_REMIX', 'MWEB']);
+      expect(
+        resolver.recentLog.first.outcome,
+        contains('GAGAL ResolveFailureCause.parseFailed'),
+      );
+    });
+
+    test('solver mengembalikan URL host liar -> client dilewati', () async {
+      final FakeInnertube innertube = FakeInnertube(
+        responses: <String, Object>{
+          'WEB_REMIX': okResponse(),
+          'MWEB': okResponse(cipher: false),
+        },
+      );
+      final FakeSolver solver = FakeSolver()
+        ..urlToReturn = 'https://evil.example/lagu.mp3';
+      final StreamResolver resolver = makeResolver(
+        innertube: innertube,
+        solver: solver,
+        clients: const <ClientDefinition>[kWebRemixClient, kMwebClient],
+        prefs: prefs,
+      );
+      final ResolvedAudio result = await resolver.resolve('hhn-nGSuenM');
+      expect(result.clientName, 'MWEB');
+      expect(result.url, contains('googlevideo.com'));
+      expect(solver.solveCalls, 1);
+      expect(
+        resolver.recentLog.first.outcome,
+        contains('GAGAL ResolveFailureCause.parseFailed'),
+      );
+    });
+
+    test('semua client mengembalikan URL liar -> parseFailed, tanpa URL '
+        'liar yang lolos', () async {
+      final FakeInnertube innertube = FakeInnertube(
+        responses: <String, Object>{
+          'WEB_REMIX': okResponse(
+            cipher: false,
+            directUrl: 'https://evil.example/lagu.mp3',
+          ),
+        },
+      );
+      final StreamResolver resolver = makeResolver(
+        innertube: innertube,
+        solver: FakeSolver(),
+        clients: const <ClientDefinition>[kWebRemixClient],
+        prefs: prefs,
+      );
+      ExtractorException? caught;
+      try {
+        await resolver.resolve('hhn-nGSuenM');
+        fail('resolve seharusnya melempar');
+      } on ExtractorException catch (e) {
+        caught = e;
+      }
+      expect(caught, isNotNull);
+      expect(caught.cause, ResolveFailureCause.parseFailed);
     });
   });
 }

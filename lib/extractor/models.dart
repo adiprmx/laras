@@ -5,6 +5,12 @@
 /// sini tidak mencetak URL di [toString].
 library;
 
+/// Batas jumlah item per kelompok hasil parse (rencana §3.3: 100 item
+/// per halaman; halaman playlist YouTube sendiri berukuran 100 item,
+/// jadi cap ini tidak memotong hasil yang sah). Mencegah satu respons
+/// raksasa menumbuhkan daftar tanpa batas di memori (R1-M3).
+const int kMaxParserItemsPerGroup = 100;
+
 /// Satu format audio dari respons player InnerTube.
 class AudioFormat {
   const AudioFormat({
