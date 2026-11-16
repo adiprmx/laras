@@ -353,8 +353,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: c84a5011cc55a45ba6cea923319d1aec41970924
-      resolved-ref: c84a5011cc55a45ba6cea923319d1aec41970924
+      ref: "0bb8b583ea543b1bf3687a6a0d36ef0d655f9d89"
+      resolved-ref: "0bb8b583ea543b1bf3687a6a0d36ef0d655f9d89"
       url: "https://github.com/adiprmx/gg_quickjs.git"
     source: git
     version: "0.1.1"

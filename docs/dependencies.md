@@ -170,15 +170,25 @@ terakhir push 19 Okt 2026 dan belum merilis paket 0.18.0.
 **Fork ini:**
 - Repo: `github.com/adiprmx/gg_quickjs` (fork dari
   `ggsuite/gg_quickjs`, dibuat 16 Nov 2026 via API GitHub).
-- Commit: `c84a5011cc55a45ba6cea923319d1aec41970924`
-  ("QuickJS-ng 0.18.0 (fork Laras): UAF #1781/#1844 + OOM fixes,
-  package 0.1.1"), 13 file berubah vs upstream `b96fc56`.
+- Commit: `0bb8b583ea543b1bf3687a6a0d36ef0d655f9d89`
+  ("fix: JSInterruptHandler signature for QuickJS-ng 0.18.0
+  (JSContext*)"), di atas `c84a5011` ("QuickJS-ng 0.18.0 (fork
+  Laras): UAF #1781/#1844 + OOM fixes, package 0.1.1"), 13 file
+  berubah vs upstream `b96fc56`.
 - Versi paket fork: 0.1.1 (bump dari 0.1.0; perubahan hanya
-  QuickJS-ng 0.17.0 → 0.18.0 + dokumen fork).
+  QuickJS-ng 0.17.0 → 0.18.0 + dokumen fork + perbaikan signature
+  interrupt handler).
 - Pin di `pubspec.yaml`: dependensi git dengan `ref` commit penuh
   (BUKAN branch) supaya build reproduksibel:
   `url: https://github.com/adiprmx/gg_quickjs.git`,
-  `ref: c84a5011cc55a45ba6cea923319d1aec41970924`.
+  `ref: 0bb8b583ea543b1bf3687a6a0d36ef0d655f9d89`.
+- Catatan 0.18.0: `JSInterruptHandler` kini `int (*)(JSContext *,
+  void *)` (dulu `JSRuntime *`); `interrupt_handler` di
+  `src/gg_quickjs.c` disesuaikan (parameter tidak dipakai — hanya
+  `opaque` yang dibaca). Clang 16+ menolak signature lama sebagai
+  error (CI run 43941844119 gagal di langkah Test karena ini);
+  GCC menerimanya sebagai warning, jadi kegagalan ini lolos dari
+  tes lokal yang memakai shim gcc.
 - Workdir fork (clone lokal, bukan bagian repo Laras):
   `~/workspace/music-app/gg_quickjs-fork/`.
 

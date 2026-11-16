@@ -122,6 +122,11 @@ the download path, byte caps and stall watchdogs, and QuickJS-ng
 
 ### Fixed
 
+- Fork `gg_quickjs` pin moved to `0bb8b583`: QuickJS-ng 0.18.0
+  changed `JSInterruptHandler` to take `JSContext *`, and Clang 16+
+  rejects the old `JSRuntime *` handler as an error (CI run
+  43941844119 failed on this; GCC only warns, so local tests run
+  with the gcc shim missed it).
 - Release workflow no longer runs live-tagged tests (same exclusion
   as CI: `flutter test --exclude-tags live`).
 - Stream URLs on the direct (script-free client) download path are
