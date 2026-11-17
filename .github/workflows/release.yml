@@ -160,7 +160,7 @@ jobs:
         run: |
           cd build/app/outputs/flutter-apk
           sha256sum *.apk symbols.zip symbols-aab.zip > SHA256SUMS.txt
-          cd ../../bundle/release
+          cd ../bundle/release
           sha256sum *.aab >> ../../flutter-apk/SHA256SUMS.txt
           cat ../../flutter-apk/SHA256SUMS.txt
 
