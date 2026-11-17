@@ -2,21 +2,33 @@
 
 Pemutar musik Android yang gratis, tanpa iklan, dan bisa dipakai offline.
 
-Laras memutar lagu dari YouTube dan YouTube Music, menyimpan lagu di HP lewat unduhan, dan tidak punya server, akun, atau iklan. App ini masih dalam pengembangan awal. Versi yang ada di repo ini adalah fondasi (0.9.x). Rilis publik pertama adalah v1.0.0.
+Laras memutar lagu dari YouTube dan YouTube Music. Lagu yang kamu unduh tersimpan di HP dan bisa diputar tanpa internet. Laras tidak punya server, akun, atau iklan.
 
 [English version](#english)
 
-## Fitur yang direncanakan untuk v1
+## Fitur
 
-- Cari dan putar lagu dari YouTube Music, tanpa login.
-- Unduh lagu, album, dan playlist, lalu putar tanpa internet.
+- Cari lagu dari YouTube Music tanpa login, dengan saran saat mengetik dan riwayat pencarian.
+- Cari di Library-mu sendiri, termasuk saat offline.
+- Putar lagu lewat internet, atau unduh dulu lalu putar tanpa internet.
+- Unduhan bisa dijeda dan dilanjutkan, dengan tiga pilihan kualitas dan pilihan unduh WiFi saja.
+- Lagu yang pernah diputar bisa diputar lagi tanpa internet, sampai batas ruang yang kamu atur.
 - Library, playlist, favorit, dan riwayat putar, semuanya tersimpan di HP.
-- Antrean putar yang tidak hilang saat app ditutup.
+- Antrean putar kembali seperti semula setelah app ditutup.
+- Lirik tersinkron dan lirik biasa, dari LRCLIB.
+- Sleep timer, equalizer perangkat, kecepatan dan nada putar.
+- Salinan data dalam satu file, bisa dipulihkan di HP lain.
+- Impor playlist Spotify dari file milikmu atau dari tautan playlist publik, tanpa API Spotify dan tanpa login. Tautan publik hanya bisa dibaca 30 lagu pertamanya.
 - Notifikasi media, kontrol layar kunci, headset, dan Bluetooth.
-- Backup dan impor data dalam satu file.
-- Tanpa akun, tanpa telemetri, tanpa iklan, tanpa server.
+- Tautan youtu.be dan music.youtube.com yang dibuka dari luar app memutar lagunya di Laras.
 
-Daftar ini adalah rencana, bukan janji. Fitur masuk v1 bila sudah jadi dan teruji. Yang belum jadi tidak tampil di app.
+Yang belum ada di versi ini: unduh album atau playlist sekaligus (unduh per lagu sudah bisa), pemutar file audio di HP, dan widget layar beranda.
+
+## Cara pasang
+
+Unduh APK dari [GitHub Releases](https://github.com/adiprmx/laras/releases), lalu pasang di HP Android (API 26 ke atas, Android 8.0+). Pilih APK sesuai HP kamu: arm64-v8a untuk hampir semua HP baru, armeabi-v7a untuk HP lama 32-bit. APK rilis di bawah 25 MB per ABI.
+
+Laras tidak ada di Play Store. Pengajuan ke IzzyOnDroid menyusul.
 
 ## Bukan produk resmi
 
@@ -26,20 +38,16 @@ Laras memakai akses tidak resmi ke layanan YouTube dan YouTube Music. Cara ini m
 
 Nama dan logo YouTube adalah milik Google. Laras tidak memakai nama, logo, atau merek YouTube atau Spotify di nama app, ikon, atau judul.
 
+Suka lagu yang kamu dengar? Dukung artisnya dengan mendengarkan di layanan resmi atau membeli karyanya.
+
 ## Privasi
 
 - Laras tidak mengumpulkan data pengguna. Tidak ada akun, tidak ada telemetri, tidak ada pelacak.
-- Semua data app (library, playlist, favorit, riwayat, antrean, pengaturan) tersimpan lokal di HP. Data itu tidak dikirim ke server milik app, karena app ini tidak punya server.
-- Saat app dipakai, pihak ketiga menerima sebagian data: Google dan YouTube menerima alamat IP, kueri pencarian, dan permintaan stream. Penyedia lirik (bila lirik diaktifkan) menerima alamat IP dan judul lagu. Host config remote (GitHub Releases) menerima alamat IP saat app memeriksa pembaruan konfigurasi.
+- Semua data app (library, playlist, favorit, riwayat, antrean, pengaturan, unduhan) tersimpan lokal di HP. Data itu tidak dikirim ke server milik app, karena app ini tidak punya server.
+- Saat app dipakai, pihak ketiga menerima sebagian data: Google dan YouTube menerima alamat IP, kueri pencarian, dan permintaan stream; LRCLIB menerima alamat IP dan judul, artis, dan durasi lagu saat kamu membuka lirik; GitHub menerima alamat IP saat app memeriksa pembaruan konfigurasi; open.spotify.com menerima alamat IP hanya bila kamu mengimpor playlist dari tautan publik.
 - Pengguna bisa menghapus semua data dari dalam app.
 
-Kebijakan privasi lengkap ada di `PRIVACY_POLICY.md` (ditulis di P10, sebelum rilis v1.0.0).
-
-## Cara pasang
-
-Unduh APK dari [GitHub Releases](https://github.com/adiprmx/laras/releases), lalu pasang di HP Android (API 26 ke atas). Belum ada rilis sampai v1.0.0 diterbitkan. Build uji 0.9.x diterbitkan sebagai pre-release dan bisa berubah sewaktu-waktu.
-
-Laras tidak ada di Play Store. Pengajuan ke IzzyOnDroid dan F-Droid menyusul setelah rilis.
+Kebijakan privasi lengkap ada di [PRIVACY_POLICY.md](PRIVACY_POLICY.md), dan bisa dibaca di dalam app dari Pengaturan, lalu Tentang, lalu Kebijakan privasi.
 
 ## Cara build dari source
 
@@ -76,19 +84,31 @@ Laras dilisensikan di bawah GNU General Public License v3.0 only (GPL-3.0-only).
 
 A free Android music player with no ads that works offline.
 
-Laras plays music from YouTube and YouTube Music, stores songs on your phone through downloads, and has no server, no account, and no ads. The app is in early development. What is in this repo is the foundation (0.9.x). The first public release is v1.0.0.
+Laras plays music from YouTube and YouTube Music. Songs you download stay on your phone and play without internet. Laras has no server, no account, and no ads.
 
-## Planned features for v1
+## Features
 
-- Search and play songs from YouTube Music, without logging in.
-- Download songs, albums, and playlists, then play them without internet.
+- Search YouTube Music without logging in, with suggestions as you type and search history.
+- Search your own Library, including offline.
+- Stream songs, or download them first and play them without internet.
+- Downloads can pause and resume, with three quality choices and a WiFi-only option.
+- Songs you have played before can play again offline, up to the space limit you set.
 - Library, playlists, favorites, and play history, all stored on your phone.
-- A play queue that survives closing the app.
+- The play queue comes back as it was after the app is closed.
+- Synced and plain lyrics, from LRCLIB.
+- Sleep timer, device equalizer, playback speed and pitch.
+- Backup of your data in one file, restorable on another phone.
+- Spotify playlist import from your own file or from a public playlist link, without any Spotify API and without logging in. A public link only reads the first 30 tracks.
 - Media notification, lock screen controls, headset, and Bluetooth controls.
-- Backup and import of your data in one file.
-- No account, no telemetry, no ads, no server.
+- youtu.be and music.youtube.com links opened from outside the app play that song in Laras.
 
-This list is a plan, not a promise. A feature ships in v1 once it is done and tested. Unfinished features do not appear in the app.
+Not in this version yet: downloading a whole album or playlist at once (downloading one song at a time works), a player for audio files on your phone, and a home screen widget.
+
+## Install
+
+Download the APK from [GitHub Releases](https://github.com/adiprmx/laras/releases) and install it on an Android phone (API 26 and up, Android 8.0+). Pick the APK for your phone: arm64-v8a for almost all newer phones, armeabi-v7a for older 32-bit phones. Release APKs stay under 25 MB per ABI.
+
+Laras is not on the Play Store. An IzzyOnDroid submission follows.
 
 ## Not an official product
 
@@ -98,20 +118,16 @@ Laras uses unofficial access to YouTube and YouTube Music services. This violate
 
 YouTube names and logos belong to Google. Laras does not use YouTube or Spotify names, logos, or brands in the app name, icon, or title.
 
+Like a song you hear? Support the artist by listening on an official service or buying their work.
+
 ## Privacy
 
 - Laras collects no user data. No account, no telemetry, no trackers.
-- All app data (library, playlists, favorites, history, queue, settings) stays on your phone. None of it goes to an app server, because the app has no server.
-- While you use the app, third parties receive some data: Google and YouTube receive your IP address, search queries, and stream requests. The lyrics provider (if lyrics are enabled) receives your IP address and song titles. The remote config host (GitHub Releases) receives your IP address when the app checks for config updates.
+- All app data (library, playlists, favorites, history, queue, settings, downloads) stays on your phone. None of it goes to an app server, because the app has no server.
+- While you use the app, third parties receive some data: Google and YouTube receive your IP address, search queries, and stream requests; LRCLIB receives your IP address and the title, artist, and duration of a song when you open its lyrics; GitHub receives your IP address when the app checks for config updates; open.spotify.com receives your IP address only when you import a playlist from a public link.
 - You can delete all data from inside the app.
 
-The full privacy policy lives in `PRIVACY_POLICY.md` (written in P10, before the v1.0.0 release).
-
-## Install
-
-Download the APK from [GitHub Releases](https://github.com/adiprmx/laras/releases) and install it on an Android phone (API 26 and up). There is no release until v1.0.0 ships. Test builds (0.9.x) ship as pre-releases and can change at any time.
-
-Laras is not on the Play Store. IzzyOnDroid and F-Droid submissions follow after release.
+The full privacy policy lives in [PRIVACY_POLICY.md](PRIVACY_POLICY.md) (Indonesian), and can be read inside the app from Settings, then About, then Privacy Policy.
 
 ## Build from source
 
@@ -130,7 +146,7 @@ Build a debug APK, split per ABI:
 flutter build apk --debug --split-per-abi
 ```
 
-APK size target: 25 MB max per ABI for the release APK (arm64-v8a and armeabi-v7a; x86_64 is not shipped — emulator-only). CI checks that limit on release APKs; debug APK sizes are reported only (debug APKs are inherently much larger — unstripped engine and debug symbols).
+APK size target: 25 MB max per ABI for the release APK (arm64-v8a and armeabi-v7a; x86_64 is not shipped, emulator-only). CI checks that limit on release APKs; debug APK sizes are reported only (debug APKs are inherently much larger, unstripped engine and debug symbols).
 
 ## Contribute
 

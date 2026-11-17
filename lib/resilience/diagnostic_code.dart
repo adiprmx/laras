@@ -20,15 +20,15 @@
 ///   KLIEN    = client yang dicoba pada putaran gagal terakhir,
 ///              inisial berurutan: W WEB_REMIX, M MWEB, V ANDROID_VR,
 ///              ? nama tidak dikenal; X bila tidak ada data.
-///   APP      = versi app tanpa titik + build: 0.9.0+1 -> 0901.
+///   APP      = versi app tanpa titik + build: 1.0.0+2 -> 1002.
 ///   CFG      = config: R + tanggal versi client utama (R20261110)
 ///              bila config jarak jauh, B bila config bawaan.
 ///   LAYANAN  = status kanari: O normal, D terganggu, B bermasalah,
 ///              ? belum pernah diperiksa.
 ///
-/// Contoh: `LRS1-UPF-16191905-WMV-0901-R20261110-D`
+/// Contoh: `LRS1-UPF-16191905-WMV-1002-R20261110-D`
 ///   = lagu tidak bisa diputar karena bentuk respons berubah,
-///     16 Nov 19:05, ketiga client dicoba, app 0.9.0+1,
+///     16 Nov 19:05, ketiga client dicoba, app 1.0.0+2,
 ///     config remote 2026-11-10, layanan terganggu.
 ///
 /// PRIVASI: kode TIDAK berisi judul lagu, videoId, URL, alamat IP,
@@ -73,10 +73,10 @@ class DiagnosticData {
   /// (mis. `['WEB_REMIX', 'MWEB', 'ANDROID_VR']`).
   final List<String> clientsTried;
 
-  /// Versi app, mis. '0.9.0'.
+  /// Versi app, mis. '1.0.0'.
   final String appVersion;
 
-  /// Build app, mis. 1.
+  /// Build app, mis. 2.
   final int appBuild;
 
   /// Versi client utama di config aktif, mis. '1.20261110.04.00'.

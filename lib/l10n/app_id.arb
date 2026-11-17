@@ -1266,7 +1266,7 @@
   },
   "faq5a": "File salinan hanya berisi daftar lagu, playlist, dan pengaturan, bukan file lagunya, supaya filenya tetap kecil dan mudah dikirim. Sesudah memulihkan di HP baru, tekan 'Unduh ulang' untuk mengunduh lagi lagu-lagumu.",
   "@faq5a": {
-    "description": "P8: jawaban FAQ 5 diperbarui — file salinan kini ada (B7.2/B7.4)."
+    "description": "P8: jawaban FAQ 5 diperbarui, file salinan kini ada (B7.2/B7.4)."
   },
   "faq6q": "Bagaimana cara memindahkan data ke HP baru?",
   "@faq6q": {
@@ -1274,7 +1274,7 @@
   },
   "faq6a": "Di HP lama, buka Pengaturan, lalu 'Salinan data', lalu 'Salin data ke file'. Kirim file itu ke HP baru lewat kabel, Bluetooth, atau aplikasi kirim file. Di HP baru, buka menu yang sama lalu 'Pulihkan dari file' dan pilih file itu.",
   "@faq6a": {
-    "description": "P8: jawaban FAQ 6 diperbarui — pindah HP kini bisa lewat file salinan (B7.5)."
+    "description": "P8: jawaban FAQ 6 diperbarui, pindah HP kini bisa lewat file salinan (B7.5)."
   },
   "faq7q": "Kenapa musik berhenti sendiri saat saya membuka app lain?",
   "@faq7q": {
@@ -1337,7 +1337,7 @@
     "description": "P6: nomor versi app di layar Tentang.",
     "placeholders": {
       "version": {
-        "example": "0.9.0",
+        "example": "1.0.0",
         "type": "String"
       }
     }
@@ -1356,7 +1356,19 @@
   },
   "aboutPrivacyNote": "Laras tidak mengumpulkan data. Semua lagu, playlist, dan pengaturanmu hanya tersimpan di HP ini.",
   "@aboutPrivacyNote": {
-    "description": "P6: ringkasan privasi di layar Tentang (kebijakan lengkap menyusul di P10)."
+    "description": "P6: ringkasan privasi di layar Tentang. P10: kebijakan lengkap ada di layar Kebijakan privasi."
+  },
+  "privacyPolicyTitle": "Kebijakan privasi",
+  "@privacyPolicyTitle": {
+    "description": "P10: judul layar kebijakan privasi."
+  },
+  "privacyPolicyLoading": "Memuat kebijakan privasi...",
+  "@privacyPolicyLoading": {
+    "description": "P10: teks saat kebijakan privasi sedang dimuat."
+  },
+  "privacyPolicyLoadFailed": "Kebijakan privasi belum bisa dibuka.",
+  "@privacyPolicyLoadFailed": {
+    "description": "P10: pesan bila file kebijakan privasi gagal dimuat."
   },
   "aboutEmail": "Email",
   "@aboutEmail": {
@@ -1679,7 +1691,7 @@
     "description": "P8: baris ringkasan versi app pembuat salinan.",
     "placeholders": {
       "version": {
-        "example": "0.9.0",
+        "example": "1.0.0",
         "type": "String"
       }
     }

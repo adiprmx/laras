@@ -27,6 +27,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // P10: sertakan info dependensi di APK/AAB agar pemindai repo
+    // (IzzyOnDroid/F-Droid) bisa mengaudit dependensi dari artefak.
+    dependenciesInfo {
+        includeInApk = true
+        includeInBundle = true
+    }
+
     defaultConfig {
         applicationId = "id.my.adipmusic.laras"
         // minSdk API 26 (Android 8.0) diputuskan di PRD: selaras SimpMusic

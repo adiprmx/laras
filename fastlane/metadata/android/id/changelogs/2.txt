@@ -1,0 +1,1 @@
+Rilis publik pertama. Cari dan putar lagu dari YouTube Music tanpa akun. Unduh lagu dan dengarkan offline. Library, playlist, favorit, dan riwayat putar di HP. Lirik tersinkron, timer tidur, dan equalizer bawaan HP. Cadangan dan pulihkan data dalam satu file. Impor playlist Spotify tanpa API Spotify.

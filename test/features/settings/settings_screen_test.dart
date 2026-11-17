@@ -335,7 +335,7 @@ void main() {
     await tester.tap(find.text(strings.aboutLicenses));
     await tester.pumpAndSettle();
     expect(find.byType(AboutScreen), findsOneWidget);
-    expect(find.textContaining('0.9.0'), findsOneWidget);
+    expect(find.textContaining('1.0.0'), findsOneWidget);
     await closePump(tester);
   });
 
@@ -372,7 +372,7 @@ void main() {
     );
     expect(
       codeWidget.data,
-      matches(RegExp(r'^LRS1-XXX-\d{8}-X-0901-B-O$')),
+      matches(RegExp(r'^LRS1-XXX-\d{8}-X-1002-B-O$')),
     );
     await tester.tap(find.text(strings.copyCode));
     // onPressed async (clipboard lalu snackbar): satu pump tidak cukup,

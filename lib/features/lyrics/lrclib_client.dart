@@ -1,4 +1,4 @@
-/// Client LRCLIB (https://lrclib.net) — layanan lirik gratis tanpa
+/// Client LRCLIB (https://lrclib.net): layanan lirik gratis tanpa
 /// kunci atau akun untuk baca.
 ///
 /// Diverifikasi dari 3 sumber independen 16 Nov 2026: dokumentasi di
@@ -22,13 +22,15 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:laras/core/app_info.dart';
 import 'package:laras/extractor/errors.dart';
 import 'package:laras/extractor/response_limits.dart';
 
 /// User-Agent yang dikirim ke LRCLIB (aturan layanan: deskriptif +
-/// cara menghubungi pemilik client).
+/// cara menghubungi pemilik client). Versi diambil dari [kAppVersion]
+/// supaya selalu sinkron dengan versi app.
 const String kLrclibUserAgent =
-    'Laras/0.9.0 (https://github.com/adiprmx/laras)';
+    'Laras/$kAppVersion (https://github.com/adiprmx/laras)';
 
 /// Batas ukuran respons LRCLIB (R3-L1): 1 MB. Lirik lagu umumnya
 /// < 50 KB, jadi batas ini sangat longgar untuk respons normal tapi

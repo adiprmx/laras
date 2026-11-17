@@ -1,0 +1,1 @@
+First public release. Search and play music from YouTube Music without an account. Download songs and listen offline. Library, playlists, favorites, and play history on your phone. Synced lyrics, sleep timer, and device equalizer. Backup and restore in one file. Spotify playlist import without any Spotify API.

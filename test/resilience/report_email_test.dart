@@ -14,7 +14,7 @@ void main() {
     );
     expect(email.to, 'adiprmx@gmail.com');
     expect(email.subject, 'Laporan kerusakan Laras');
-    expect(email.body, contains('Versi app: 0.9.0 (1)'));
+    expect(email.body, contains('Versi app: 1.0.0 (2)'));
     expect(email.body, contains('Model HP: Pixel 8'));
     expect(email.body, contains('Versi Android: 14'));
     expect(email.body, contains('Waktu: 16-11-2026 10:15'));
@@ -31,11 +31,11 @@ void main() {
     final ReportEmail withCode = buildReportEmail(
       deviceModel: 'Pixel 8',
       androidVersion: '14',
-      diagnosticCode: 'LRS1-UPF-16111905-WMV-0901-R20261110-D',
+      diagnosticCode: 'LRS1-UPF-16111905-WMV-1002-R20261110-D',
     );
     expect(
       withCode.body,
-      contains('Kode diagnostik: LRS1-UPF-16111905-WMV-0901-R20261110-D'),
+      contains('Kode diagnostik: LRS1-UPF-16111905-WMV-1002-R20261110-D'),
     );
     final ReportEmail withoutCode = buildReportEmail(
       deviceModel: 'Pixel 8',

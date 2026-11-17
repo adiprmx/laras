@@ -7,7 +7,7 @@
 library;
 
 /// Versi aplikasi (tanpa build number), sinkron dengan pubspec.yaml.
-const String kAppVersion = '0.9.0';
+const String kAppVersion = '1.0.0';
 
 /// Build number, sinkron dengan pubspec.yaml.
-const int kAppBuild = 1;
+const int kAppBuild = 2;

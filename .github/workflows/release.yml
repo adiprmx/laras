@@ -1,6 +1,18 @@
 # Release: build signed release APKs and an AAB when a v* tag is pushed,
 # then publish a GitHub Release with SHA-256 checksums.
 #
+# Release-candidate mode (P10): the same job can be started by hand from
+# the Actions tab (workflow_dispatch, input `version`, default "1.0.0").
+# A dispatch run builds, signs and checksums EXACTLY like a tag run, but
+# it does NOT publish anything: the "Build release notes" and "Publish
+# GitHub Release" steps are skipped, and the APKs, AAB, debug symbols and
+# SHA256SUMS are uploaded as a workflow artifact instead
+# (laras-release-candidate-<version>). The version input only names the
+# artifact; the app version itself comes from pubspec.yaml. The RC is the
+# release gate: the owner tries the RC APK first, and only after approval
+# does the coordinator push the v* tag that publishes the real release.
+# On a tag push (v*), behaviour is UNCHANGED (full publication).
+#
 # Supply chain (R1-L5): every action is pinned to a full commit SHA, not a
 # mutable tag (see the header comment in ci.yml for the rationale).
 #
@@ -26,13 +38,20 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release candidate version (names the artifact only; app version comes from pubspec.yaml)"
+        required: false
+        default: "1.0.0"
+        type: string
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Build signed APKs and AAB, publish release
+    name: Build signed APKs and AAB (publish on tag, RC artifact on dispatch)
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
@@ -146,6 +165,7 @@ jobs:
           cat ../../flutter-apk/SHA256SUMS.txt
 
       - name: Build release notes
+        if: github.event_name == 'push'
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           NOTES="RELEASE_NOTES.md"
@@ -172,6 +192,7 @@ jobs:
           cat "$NOTES"
 
       - name: Publish GitHub Release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -183,3 +204,19 @@ jobs:
             build/app/outputs/flutter-apk/symbols.zip \
             build/app/outputs/flutter-apk/symbols-aab.zip \
             build/app/outputs/flutter-apk/SHA256SUMS.txt
+
+      # Release-candidate mode only (workflow_dispatch): nothing is
+      # published. The signed APKs, AAB, symbols and checksums go to a
+      # workflow artifact for the owner to try before any tag is pushed.
+      - name: Upload release candidate artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: laras-release-candidate-${{ inputs.version }}
+          path: |
+            build/app/outputs/flutter-apk/*.apk
+            build/app/outputs/bundle/release/*.aab
+            build/app/outputs/flutter-apk/symbols.zip
+            build/app/outputs/flutter-apk/symbols-aab.zip
+            build/app/outputs/flutter-apk/SHA256SUMS.txt
+          retention-days: 30

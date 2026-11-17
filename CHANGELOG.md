@@ -7,26 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Work toward 0.9.0, the first test build. P3 (database + library), P4
-(online search + home sections), and P5 (downloads + offline cache) are
-in. P6 (resilience) is in: service-health monitoring with a daily
-canary check, a real Settings screen, unplayable-song handling, and
-delete-all-data. P7 (Should features) is in: lyrics, sleep timer,
-equalizer, player persistence, restart-proof queue restore, and deep
-links. Blue 2 (Red 2 security fixes) is in: stream-URL allowlist on
-the download path, byte caps and stall watchdogs, and QuickJS-ng
-0.18.0 via a pinned fork. The solver prelude now collects transitive
-dependencies and reads the per-hash URL class and methods from
-base.js (fixes playback on the rotated player hashes), and Blue 3
-(Red 3 fixes) is in: response caps on the lyrics client, a
-gradle-wrapper validation job in CI, and removal of the dead
-internal log. P8 (backup and export) is in: versioned JSON backup
-(export/share/import with merge), Spotify playlist import without
-any Spotify API, and an import report; the delete-all-data dialog
-offers to save a backup first.
+## [1.0.0]
+
+First public release. Laras plays music from YouTube and YouTube
+Music without an account, downloads songs for offline listening,
+and keeps all data on the phone. This release includes online and
+local search, a persistent player and queue, downloads with a
+streaming cache, library and playlists, lyrics, a sleep timer, an
+Android equalizer, versioned JSON backup, Spotify playlist import
+without any Spotify API, deep links, and resilience tooling
+(remote config, canary health checks, honest failure messages).
+The full automated test suite passes and `flutter analyze` is
+clean.
 
 ### Added
 
+- Full privacy policy (P10, `PRIVACY_POLICY.md`), readable inside
+  the app from Settings, then About, then Privacy Policy. It names
+  LRCLIB as the lyrics provider and lists every host the app
+  contacts.
 - Service-health monitoring (P6): the canary checker now runs once a
   day in the background at cold start and on resume, without disturbing
   playback; status is persisted and shown as a three-level home banner
@@ -73,7 +72,7 @@ offers to save a backup first.
   (`showHonestySheet`, flag `honesty_sheet_shown_v1`); first-run
   orchestration (onboarding → sheet → home) belongs to the onboarding
   flow. No permanent line on home.
-- Lyrics (P7, LRCLIB — free, no key): synced lyrics with auto-scroll
+- Lyrics (P7, LRCLIB, free, no key): synced lyrics with auto-scroll
   and a 5-second pause after the user scrolls, plain lyrics, and
   honest states for missing, instrumental, offline, and failed
   (with retry). Results are cached in the database; missing or
@@ -81,7 +80,7 @@ offers to save a backup first.
   still be found next session. Attribution is always shown in the
   sheet footer. Live verification from the owner's phone is still
   pending (VM egress was dead during development).
-- Sleep timer (P7): presets 5/10/15/30/45/60 minutes, custom 1–180
+- Sleep timer (P7): presets 5/10/15/30/45/60 minutes, custom 1-180
   minutes, and an end-of-song mode; a live countdown chip sits on the
   player screen. When the timer ends the player pauses (queue and
   position stay intact) instead of stopping the service.
@@ -108,8 +107,8 @@ offers to save a backup first.
   queue, playback position, and settings to
   `backup-musik-YYYYMMDD-HHmmss.json` via the Android share sheet,
   and restores from a picked file after a summary dialog (with an
-  opt-in to also restore settings). Audio files are NOT backed up —
-  only the downloaded flag per song; after restore, a "Unduh ulang"
+  opt-in to also restore settings). Audio files are NOT backed up:
+  only the downloaded flag per song is stored; after restore, a "Unduh ulang"
   button re-queues those songs. Import merges in a single drift
   transaction (atomic: a broken file changes nothing); same-named
   playlists merge instead of duplicating, the backed-up queue is
@@ -133,7 +132,7 @@ offers to save a backup first.
   bottom sheet summarizes succeeded / already-existed / failed with
   a per-song reason for each failure. The report is not stored.
 - "Simpan salinan dulu" in the delete-all-data dialog (P8, B7.3):
-  exports a backup first, then returns to the dialog — deletion
+  exports a backup first, then returns to the dialog. Deletion
   never continues automatically after the export.
 - FAQ grows from 12 to 18 questions (P8): six new Q&As about backup,
   import, moving to a new phone, and Spotify import. The two old
@@ -142,35 +141,71 @@ offers to save a backup first.
 - Delete-all-data now also removes the orphaned `laras-internal.log`
   file from old installs (P8 residue; InternalLog was removed by
   Blue 3).
+- Local database (drift + SQLite, schema v1): 15 tables (songs, albums,
+  artists, playlists, play history, search history, queue, downloads,
+  cache, and more) plus an FTS5 virtual table for local search; tested
+  migration artifacts (`drift_schemas/drift_schema_v1.json`,
+  `test/generated_migrations.dart`).
+- Library tab with six sections: songs (sortable: newest, name,
+  most-played), playlists, favorites, history, albums, artists, all
+  paginated 50 per page with honest empty states.
+- Playlists: create, rename, describe, delete, add/remove songs,
+  drag to reorder.
+- Favorites: heart buttons on the Player screen, the mini-player, and
+  every library song row; favoriting also adds the song to the library.
+- Play history recorded automatically while songs play (10-second
+  minimum), with a clear-history action.
+- Local search engine (FTS5 over song titles and artist names, with
+  search history). The search UI arrived with online search in P4.
+- Repository foundation: README, GPL-3.0-only license, contributing guide,
+  code of conduct, security policy, issue and pull request templates.
+- Flutter app skeleton: dark monochrome theme from design tokens, bottom
+  navigation with four tabs (Beranda, Cari, Library, Unduhan), honest empty
+  states, and a mini-player slot that stays hidden until a song plays.
+- Indonesian UI strings in `lib/l10n/app_id.arb`, ready for localization.
+- CI workflow: analyze, test, debug + release APK builds split per ABI,
+  25 MB size check on the release APK.
+- Release workflow: signed release APKs and AAB from tags, SHA-256 checksums.
 
 ### Changed
 
+- Version 1.0.0 (build 2); README rewritten for v1.0.0 (features as
+  shipped, install from GitHub Releases).
 - Settings screen replaces the "Segera hadir" stub (P6).
 - DownloadService and StreamCacheService honor the WiFi-only switch
   (P6, minimal additive gates; no download-logic change).
-
 - APKs are now built for arm64-v8a and armeabi-v7a only. The x86_64 ABI
   was dropped: it runs on emulators only, and after P3 its release APK
-  reached 26,161,237 bytes — 53,163 bytes under the 25 MB limit, a
+  reached 26,161,237 bytes, 53,163 bytes under the 25 MB limit, a
   breach waiting for the next package.
 - Release builds are now obfuscated (`--obfuscate` with split debug
   info) to shrink the app code; the debug symbols are published with
   each release so crash stack traces stay symbolizable.
 - `gg_quickjs` now comes from a pinned fork (`adiprmx/gg_quickjs`,
   commit 0bb8b583, package 0.1.1) bundling QuickJS-ng 0.18.0 (Blue 2,
-  R2-M3, plus the `JSInterruptHandler` signature fix — see Fixed):
+  R2-M3, plus the `JSInterruptHandler` signature fix, see Fixed):
   upstream pub.dev still ships 0.17.0, which has two
   use-after-free fixes in 0.18.0 (#1781, #1844) plus uncatchable
   OOM/InternalError fixes. Return to upstream when it releases
   >= 0.18.0; see `docs/dependencies.md` §2.1.
 - Database schema is now v4 (P7): new `PlaybackState` table for
   queue restore; no existing data is touched by the migration.
+- Home screen is now a real song list: the five canary songs show with
+  album covers, titles, durations, and clear play buttons. No
+  intermediate "demo" button, no debug log panel, no jargon in visible
+  strings (K-F2-07/K-F2-08). The raw spike demo screen was removed.
+- Player screen and mini-player show cached album covers; the
+  mini-player has a favorite button and a visible progress strip, and
+  opening the full player slides up from the bottom (K-F2-09).
+- During development, the Cari and Unduhan tabs showed designed
+  "Segera hadir" screens instead of dead controls; both tabs shipped
+  their real screens in P4 and P5 (K-F2-07).
 
 ### Fixed
 
 - Backup file picker (P8 hotfix): the picker used
   `registerForActivityResult`, which does not exist on this app's
-  activity — `FlutterActivity` in Flutter 3.47.8 extends plain
+  activity: `FlutterActivity` in Flutter 3.47.8 extends plain
   `android.app.Activity`, not `androidx.activity.ComponentActivity`
   (proven by reading the superclass from the local flutter.jar; CI
   run 43972411547 failed at `:app:compileDebugKotlin` with
@@ -186,8 +221,8 @@ offers to save a backup first.
   method, and serialize method from base.js per hash instead of
   hardcoding them. Two real bugs, both proven by live tests:
   (1) on `ad8d59ae` the old prelude loaded only the first helper
-  object found (`String`, a builtin), so `Vm` — used by the cipher
-  function `Xm` on a live branch — was missing and every scripted
+  object found (`String`, a builtin), so `Vm` (used by the cipher
+  function `Xm` on a live branch) was missing and every scripted
   resolve failed with `ReferenceError: Vm is not defined`;
   (2) the URL class and serialize method rotate per hash
   (`tf`/`gf` on `fad7e4e9`, `bs`/`ff` on `ad8d59ae`, `JH`/`gf` on
@@ -198,7 +233,7 @@ offers to save a backup first.
   googlevideo URL + `sig` parameter; the `n` transform verified on
   `ad8d59ae`). CORRECTION: the earlier note below that `b559f50c`
   was "verified live end-to-end" by the 6/6 extractor suite
-  overstated what that suite proved — it exercised resolve (which
+  overstated what that suite proved: it exercised resolve (which
   falls back to the script-free ANDROID_VR client), not the
   QuickJS solver.
 - Lyrics client (LRCLIB) now enforces response caps (Blue 3,
@@ -220,7 +255,7 @@ offers to save a backup first.
   as CI: `flutter test --exclude-tags live`).
 - Stream URLs on the direct (script-free client) download path are
   now allowlist-checked, and downloads re-validate before requesting
-  (Blue 2, R2-M1 — the R1-M1 gap had recurred in the P5 mirror code).
+  (Blue 2, R2-M1; the R1-M1 gap had recurred in the P5 mirror code).
 - Downloads and the streaming cache now enforce byte caps inside the
   chunk loop (1 GB per download file; cache fetch budget) with a
   30-second connect timeout and a 60-second stall watchdog (Blue 2,
@@ -235,15 +270,15 @@ offers to save a backup first.
   file paths read from the database are shape-validated before use
   (Blue 2, R2-L3); search submit paths are wrapped in try/catch and
   browse/search screens handle errors (Blue 2, R2-L1).
-- Gradle wrapper files are no longer git-ignored (Blue 2, R2-L6 —
-  closes the R1-L8 remainder from Red 2).
+- Gradle wrapper files are no longer git-ignored (Blue 2, R2-L6;
+  this closes the R1-L8 remainder from Red 2).
 - K7 (P6 remote-config TTL test) no longer flakes under CPU load:
   the test now waits for the background refresh to finish writing
   the new config to cache instead of only waiting for the fetch to
   start.
 - Player hash rotation (17 Nov 2026): YouTube rotated base.js to
   hashes `ad8d59ae` (sts 20768, non-tcl) and `b559f50c` (sts 20770,
-  non-tcl), served concurrently on different pages — the built-in
+  non-tcl), served concurrently on different pages. The built-in
   hash map and the remote config (tag `config-v1`) now carry all
   three hashes (`fad7e4e9` 20767, `ad8d59ae` 20768, `b559f50c`
   20770). Extraction of both new ciphers was verified on the real
@@ -256,6 +291,11 @@ offers to save a backup first.
   the `ad8d59ae` cipher uses the `String` builtin as its helper
   instead of a custom object (the prelude now omits the helper
   literal for known JS builtins).
+- CI size check no longer gates on debug APKs. Run 43728749979 failed only
+  on that step (debug APKs measured 90.3 MB arm64-v8a, 68.7 MB armeabi-v7a,
+  76.4 MB x86_64); debug APKs are larger by design. The 25 MB limit now
+  applies to the release APK, the artifact users install (K4); debug APK
+  sizes are reported only.
 
 ### Removed
 
@@ -268,53 +308,5 @@ offers to save a backup first.
   redacted when written); a generic wipe step for it is a P8
   option.
 
-### Added
-
-- Local database (drift + SQLite, schema v1): 15 tables (songs, albums,
-  artists, playlists, play history, search history, queue, downloads,
-  cache, and more) plus an FTS5 virtual table for local search; tested
-  migration artifacts (`drift_schemas/drift_schema_v1.json`,
-  `test/generated_migrations.dart`).
-- Library tab with six sections: songs (sortable: newest, name,
-  most-played), playlists, favorites, history, albums, artists — all
-  paginated 50 per page with honest empty states.
-- Playlists: create, rename, describe, delete, add/remove songs,
-  drag to reorder.
-- Favorites: heart buttons on the Player screen, the mini-player, and
-  every library song row; favoriting also adds the song to the library.
-- Play history recorded automatically while songs play (10-second
-  minimum), with a clear-history action.
-- Local search engine (FTS5 over song titles and artist names, with
-  search history). The search UI itself arrives with online search in P4;
-  the Cari tab shows an honest "coming soon" screen until then.
-- Repository foundation: README, GPL-3.0-only license, contributing guide,
-  code of conduct, security policy, issue and pull request templates.
-- Flutter app skeleton: dark monochrome theme from design tokens, bottom
-  navigation with four tabs (Beranda, Cari, Library, Unduhan), honest empty
-  states, and a mini-player slot that stays hidden until a song plays.
-- Indonesian UI strings in `lib/l10n/app_id.arb`, ready for localization.
-- CI workflow: analyze, test, debug + release APK builds split per ABI,
-  25 MB size check on the release APK.
-- Release workflow: signed release APKs and AAB from tags, SHA-256 checksums.
-
-### Changed
-
-- Home screen is now a real song list: the five canary songs show with
-  album covers, titles, durations, and clear play buttons — no
-  intermediate "demo" button, no debug log panel, no jargon in visible
-  strings (K-F2-07/K-F2-08). The raw spike demo screen was removed.
-- Player screen and mini-player show cached album covers; the
-  mini-player has a favorite button and a visible progress strip, and
-  opening the full player slides up from the bottom (K-F2-09).
-- Cari and Unduhan tabs show designed "Segera hadir" screens instead of
-  dead controls (K-F2-07).
-
-### Fixed
-
-- CI size check no longer gates on debug APKs. Run 43728749979 failed only
-  on that step (debug APKs measured 90.3 MB arm64-v8a, 68.7 MB armeabi-v7a,
-  76.4 MB x86_64) — debug APKs are larger by design. The 25 MB limit now
-  applies to the release APK, the artifact users install (K4); debug APK
-  sizes are reported only.
-
-[Unreleased]: https://github.com/adiprmx/laras/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/adiprmx/laras/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/adiprmx/laras/releases/tag/v1.0.0

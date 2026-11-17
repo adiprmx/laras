@@ -591,7 +591,7 @@ class BackupData {
   /// Versi format sesudah migrasi (selalu [kCurrentBackupVersion]).
   final int version;
 
-  /// Versi app yang membuat file (string, mis. "0.9.0").
+  /// Versi app yang membuat file (string, mis. "1.0.0").
   final String appVersion;
 
   final DateTime exportedAt;

@@ -1,0 +1,23 @@
+Laras is a free music player for Android. It has no ads, no account, and no tracking. It plays music from YouTube and YouTube Music, and it stores songs on your phone so you can listen offline.
+
+Laras is an unofficial client. It is not a YouTube or Google product, and it is not affiliated with either. It uses unofficial access to YouTube and YouTube Music, which breaks YouTube's terms of service. YouTube can change its service at any time, and a change can stop playback. Songs you already downloaded keep playing if that happens.
+
+What Laras does:
+
+- Search and play songs from YouTube Music without logging in.
+- Download songs to your phone and play them without internet.
+- Keep a library, playlists, favorites, and play history on your phone.
+- Keep your play queue after you close the app.
+- Show synced lyrics when they are available.
+- Sleep timer, and the equalizer built into your phone.
+- Back up your data to one file, and restore it on another phone.
+- Import a Spotify playlist from your own file or a public link, without any Spotify account or API.
+- Media notification, lock screen controls, headset and Bluetooth controls.
+
+Playing or downloading a song for the first time needs internet. After a song is on your phone, you can play it any time without internet.
+
+The backup holds your library and settings, not the audio files. Songs need downloading again on the new phone.
+
+Your data stays on your phone. Laras has no server, collects nothing, and shows no ads. When you use the app, Google and YouTube see your IP address, your searches, and your stream requests. The lyrics provider sees your IP address and song titles. GitHub Releases sees your IP address when the app checks for updates.
+
+The app interface is in Indonesian for now.

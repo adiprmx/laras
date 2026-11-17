@@ -4,8 +4,8 @@
 /// legal, lisensi GPL-3.0-only, tautan kode sumber, ringkasan privasi
 /// singkat, dan alamat email kontak.
 ///
-/// Kebijakan privasi lengkap adalah tugas P10 — layar ini TIDAK
-/// mengklaim kebijakan lengkap sudah ada.
+/// Baris "Kebijakan privasi" (P10) membuka layar kebijakan lengkap
+/// dari aset; isinya sama dengan PRIVACY_POLICY.md di root repo.
 library;
 
 import 'package:flutter/material.dart';
@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'package:laras/core/app_info.dart';
 import 'package:laras/core/theme/app_colors.dart';
 import 'package:laras/core/theme/app_theme.dart';
+import 'package:laras/features/settings/privacy_policy_screen.dart';
 import 'package:laras/l10n/generated/app_localizations.dart';
 import 'package:laras/resilience/report_email.dart';
 import 'package:laras/resilience/resilience_scope.dart';
@@ -78,6 +79,22 @@ class AboutScreen extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
           const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.shield_outlined),
+            title: Text(strings.privacyPolicyTitle),
+            trailing: const Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: AppColors.textMuted,
+            ),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const PrivacyPolicyScreen(),
+                ),
+              );
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.code),
             title: Text(strings.aboutRepo),

@@ -1,0 +1,23 @@
+Laras adalah pemutar musik gratis untuk Android. Tanpa iklan, tanpa akun, tanpa pelacak. Laras memutar lagu dari YouTube dan YouTube Music, dan menyimpan lagu di HP supaya bisa didengar offline.
+
+Laras adalah client tidak resmi. Laras bukan produk YouTube atau Google, dan tidak berafiliasi dengan keduanya. Laras memakai akses tidak resmi ke YouTube dan YouTube Music, yang melanggar ketentuan layanan YouTube. YouTube bisa mengubah layanannya kapan saja, dan perubahan itu bisa menghentikan pemutaran. Lagu yang sudah diunduh tetap bisa diputar bila itu terjadi.
+
+Yang bisa dilakukan Laras:
+
+- Cari dan putar lagu dari YouTube Music tanpa login.
+- Unduh lagu ke HP dan putar tanpa internet.
+- Simpan library, playlist, favorit, dan riwayat putar di HP.
+- Antrean putar tidak hilang saat app ditutup.
+- Tampilkan lirik tersinkron bila tersedia.
+- Timer tidur, dan equalizer bawaan HP.
+- Cadangkan data ke satu file, dan pulihkan di HP lain.
+- Impor playlist Spotify dari file milikmu atau tautan publik, tanpa akun atau API Spotify.
+- Notifikasi media, kontrol layar kunci, headset, dan Bluetooth.
+
+Memutar atau mengunduh lagu untuk pertama kali butuh internet. Setelah lagu tersimpan di HP, lagu bisa diputar kapan pun tanpa internet.
+
+Cadangan berisi library dan pengaturan, bukan file audionya. Lagu perlu diunduh ulang di HP baru.
+
+Data kamu tetap di HP. Laras tidak punya server, tidak mengumpulkan apa pun, dan tidak menampilkan iklan. Saat app dipakai, Google dan YouTube melihat alamat IP, pencarian, dan permintaan stream kamu. Penyedia lirik melihat alamat IP dan judul lagu. GitHub Releases melihat alamat IP saat app memeriksa pembaruan.
+
+Antarmuka app berbahasa Indonesia.
